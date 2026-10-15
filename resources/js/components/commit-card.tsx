@@ -15,11 +15,11 @@ import {
     formatFullDateTime,
     formatRelativeTime,
     isWithinSeconds,
-    laneFor,
+    laneColor,
     shortHash,
 } from '@/lib/utils';
 import { show } from '@/routes/user';
-import type { Commit } from '@/types';
+import type { Commit, CursorPaginated } from '@/types';
 
 export function CommitCard({
     commit,
@@ -42,7 +42,7 @@ export function CommitCard({
     actions?: ReactNode;
     isFocused?: boolean;
     canDelete?: boolean;
-    initialReplies?: Commit[];
+    initialReplies?: CursorPaginated<Commit>;
 }) {
     const { auth } = usePage().props;
     const now = useNow();
@@ -88,7 +88,7 @@ export function CommitCard({
         >
             <div className="flex min-h-0 overflow-hidden">
                 <GraphRail
-                    lane={laneFor(commit.user_id)}
+                    lane={laneColor(commit.user.lane)}
                     previousLane={previousLane}
                     isFresh={isOwn && isWithinSeconds(commit.created_at, 15)}
                     isDimmed={isDimmed}
