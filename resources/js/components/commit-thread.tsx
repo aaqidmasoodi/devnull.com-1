@@ -16,7 +16,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { UserPreview } from '@/components/user-preview';
 import { useNow } from '@/hooks/use-now';
 import { moveCaretToEnd, useHasStash, useStash } from '@/hooks/use-stash';
-import { emojify } from '@/lib/emoji';
+import { emojify, emojifyInput } from '@/lib/emoji';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { show } from '@/routes/user';
 import type { Commit } from '@/types';
@@ -403,7 +403,21 @@ function ReplyComposer({
                         rows={1}
                         autoFocus
                         value={body}
-                        onChange={(event) => updateBody(event.target.value)}
+                        onChange={(event) => {
+                            const target = event.currentTarget;
+                            const { text, caret } = emojifyInput(
+                                target.value,
+                                target.selectionStart ?? target.value.length,
+                            );
+
+                            updateBody(text);
+
+                            if (text !== target.value) {
+                                requestAnimationFrame(() =>
+                                    target.setSelectionRange(caret, caret),
+                                );
+                            }
+                        }}
                         onKeyDown={onKeyDown}
                         onFocus={isRestored ? moveCaretToEnd : undefined}
                         maxLength={maxBodyLength}

@@ -29,3 +29,13 @@ export function emojify(text: string): string {
             shortcodeEmoji[name as keyof typeof shortcodeEmoji],
     );
 }
+
+export function emojifyInput(
+    text: string,
+    caret: number,
+): { text: string; caret: number } {
+    return {
+        text: emojify(text),
+        caret: emojify(text.slice(0, caret)).length,
+    };
+}

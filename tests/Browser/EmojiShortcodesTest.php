@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\Log;
 use App\Models\Commit;
 use App\Models\User;
 
@@ -37,6 +38,17 @@ it('renders emoji shortcodes as emoji', function (): void {
     }
 
     $page->assertNoJavaScriptErrors();
+});
+
+it('replaces a shortcode inline as the user types', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user);
+
+    visit(route('log.show', Log::Following))
+        ->type('#body', ':heart')
+        ->assertValue('#body', '❤️')
+        ->assertNoJavaScriptErrors();
 });
 
 it('leaves shortcode prefixes inside longer words untouched', function (): void {
