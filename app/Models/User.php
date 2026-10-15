@@ -31,6 +31,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property-read Collection<int, Commit> $commits
  * @property-read Collection<int, User> $following
  * @property-read Collection<int, User> $followers
+ * @property-read Collection<int, SshKey> $sshKeys
  */
 #[Hidden([
     'github_id',
@@ -72,6 +73,14 @@ final class User extends Authenticatable
     public function commits(): HasMany
     {
         return $this->hasMany(Commit::class);
+    }
+
+    /**
+     * @return HasMany<SshKey, $this>
+     */
+    public function sshKeys(): HasMany
+    {
+        return $this->hasMany(SshKey::class);
     }
 
     /**

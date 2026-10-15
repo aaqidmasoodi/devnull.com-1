@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\ApproveCommitsController;
+use App\Http\Controllers\CliScriptController;
 use App\Http\Controllers\CommitApprovalController;
 use App\Http\Controllers\CommitController;
 use App\Http\Controllers\CommitRejectionController;
@@ -20,6 +21,9 @@ use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UserSearchController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+
+// Commit from the terminal: curl -fsSL https://devnull.laravel.cloud/commit | bash -s -- 'It was DNS.'
+Route::get('commit', [CliScriptController::class, 'show'])->name('cli-script.show');
 
 Route::middleware('guest')->group(function (): void {
     Route::get('/', [HomeController::class, 'show'])->name('home');
