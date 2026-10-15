@@ -1,6 +1,16 @@
 const shortcodeEmoji = {
     heart: '❤️',
     like: '👍',
+    dislike: '👎',
+    laugh: '😂',
+    smile: '😄',
+    sad: '😢',
+    angry: '😠',
+    fire: '🔥',
+    rocket: '🚀',
+    clap: '👏',
+    eyes: '👀',
+    party: '🎉',
 } as const;
 
 const shortcodeNames = Object.keys(shortcodeEmoji).sort(
