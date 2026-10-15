@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -23,13 +24,18 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property-read string|null $parent_id
  * @property-read string $body
  * @property-read CommitStatus $status
+ * @property-read string|null $link_preview_id
  * @property-read CarbonInterface $created_at
  * @property-read CarbonInterface $updated_at
  * @property-read CarbonInterface|null $deleted_at
+ * @property-read int $stars_count
+ * @property-read bool $starred
  * @property-read User $user
+ * @property-read Collection<int, User> $stars
  * @property-read Commit|null $parent
  * @property-read Collection<int, Commit> $replies
  * @property-read int $replies_count
+ * @property-read LinkPreview|null $linkPreview
  */
 #[UseEloquentBuilder(CommitBuilder::class)]
 final class Commit extends Model
@@ -51,6 +57,7 @@ final class Commit extends Model
             'parent_id' => 'string',
             'body' => 'string',
             'status' => CommitStatus::class,
+            'link_preview_id' => 'string',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
             'deleted_at' => 'datetime',
@@ -80,6 +87,22 @@ final class Commit extends Model
     }
 
     /**
+     * @return BelongsToMany<User, $this>
+     */
+    public function stars(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'stars')->withTimestamps();
+    }
+
+    /**
+     * Approved commits are visible to everyone. Authors can also see their own.
+     */
+    public function isVisibleTo(User $user): bool
+    {
+        return $this->status === CommitStatus::Approved || $this->user_id === $user->id;
+    }
+
+    /**
      * @return BelongsTo<Commit, $this>
      */
     public function parent(): BelongsTo
@@ -93,6 +116,14 @@ final class Commit extends Model
     public function replies(): HasMany
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    /**
+     * @return BelongsTo<LinkPreview, $this>
+     */
+    public function linkPreview(): BelongsTo
+    {
+        return $this->belongsTo(LinkPreview::class);
     }
 
     /**

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\Commit;
+use App\Models\SshKey;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -31,6 +32,14 @@ it('has commits', function (): void {
     Commit::factory()->create();
 
     expect($user->commits)->toHaveCount(2);
+});
+
+it('has ssh keys', function (): void {
+    $user = User::factory()->create();
+    SshKey::factory()->for($user)->count(2)->create();
+    SshKey::factory()->create();
+
+    expect($user->sshKeys)->toHaveCount(2);
 });
 
 it('has following and followers', function (): void {
@@ -103,6 +112,22 @@ it('loads counts without joining users', function (): void {
 
     expect($queries)->toHaveCount(3)
         ->each->not->toContain('join');
+});
+
+it('knows which commits it has starred', function (): void {
+    $user = User::factory()->create();
+    $commit = Commit::factory()->create();
+
+    expect($user->hasStarred($commit))->toBeFalse();
+
+    $user->starredCommits()->attach($commit);
+
+    expect($user->hasStarred($commit))->toBeTrue()
+        ->and($commit->stars->modelKeys())->toBe([$user->id]);
+
+    $user->delete();
+
+    expect($commit->stars()->count())->toBe(0);
 });
 
 it('knows if it is following a user', function (): void {

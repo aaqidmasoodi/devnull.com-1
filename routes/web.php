@@ -3,15 +3,18 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\ApproveCommitsController;
+use App\Http\Controllers\Cli\ScriptController;
 use App\Http\Controllers\CommitApprovalController;
 use App\Http\Controllers\CommitController;
 use App\Http\Controllers\CommitOpenGraphImageController;
 use App\Http\Controllers\CommitRejectionController;
 use App\Http\Controllers\CommitReplyController;
+use App\Http\Controllers\CommitStarController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LogController;
 use App\Http\Controllers\ModerationController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PersonalDataExportController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UserFollowController;
@@ -24,6 +27,9 @@ use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UserSearchController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+
+// Commit from the terminal: curl -fsSL https://dev-null.sh/commit | bash -s -- 'Hello world!'
+Route::get('commit', [ScriptController::class, 'show'])->name('cli-script.show');
 
 Route::middleware('guest')->group(function (): void {
     Route::get('/', [HomeController::class, 'show'])->name('home');
@@ -63,6 +69,10 @@ Route::middleware('auth')->group(function (): void {
         ->name('commit.store');
     Route::delete('commits/{commit}', [CommitController::class, 'destroy'])
         ->name('commit.destroy');
+    Route::post('commits/{commit}/star', [CommitStarController::class, 'store'])
+        ->name('commit-star.store');
+    Route::delete('commits/{commit}/star', [CommitStarController::class, 'destroy'])
+        ->name('commit-star.destroy');
     Route::get('commits/{commit}/replies', [CommitReplyController::class, 'index'])
         ->withTrashed()
         ->name('commit-reply.index');
@@ -87,6 +97,7 @@ Route::middleware('auth')->group(function (): void {
     // User Profile...
     Route::get('settings', fn () => to_route('user-profile.edit'));
     Route::get('settings/profile', [UserProfileController::class, 'edit'])->name('user-profile.edit');
+    Route::get('settings/export', [PersonalDataExportController::class, 'show'])->name('personal-data-export.show');
 
     // User Lane...
     Route::put('settings/lane', [UserLaneController::class, 'update'])->name('user-lane.update');

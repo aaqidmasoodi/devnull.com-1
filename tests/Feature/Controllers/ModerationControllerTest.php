@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\Commit;
+use App\Models\LinkPreview;
 use App\Models\User;
 
 beforeEach(function (): void {
@@ -25,6 +26,8 @@ it('renders pending commits oldest first', function (): void {
             ->component('moderation/show')
             ->has('commits.data', 2)
             ->where('commits.data.0.body', 'Older')
+            ->where('commits.data.0.stars_count', 0)
+            ->where('commits.data.0.starred', false)
             ->where('commits.data.1.body', 'Newer')
             ->has('commits.data.0.user'));
 });
@@ -68,4 +71,20 @@ it('shows who a pending reply is replying to', function (): void {
     $response->assertOk()
         ->assertInertia(fn ($page) => $page
             ->where('commits.data.0.parent.user.username', 'octocat'));
+});
+
+it('includes the link previews of pending commits', function (): void {
+    $admin = User::factory()->create(['username' => 'admin']);
+
+    $linkPreview = LinkPreview::factory()->fetched()->create(['title' => 'Pending link']);
+
+    Commit::factory()->pending()->for($linkPreview)->create();
+
+    $response = $this->actingAs($admin)
+        ->get(route('moderation.show'));
+
+    $response->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('commits.data', 1)
+            ->where('commits.data.0.link_preview.title', 'Pending link'));
 });

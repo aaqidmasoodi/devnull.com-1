@@ -5,12 +5,14 @@ import {
     MessageSquareReply,
     Trash2,
 } from 'lucide-react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import { useRef, useState } from 'react';
 import CommitController from '@/actions/App/Http/Controllers/CommitController';
 import CommitReplyController from '@/actions/App/Http/Controllers/CommitReplyController';
 import { CopyLinkButton } from '@/components/copy-link-button';
 import InputError from '@/components/input-error';
+import { LinkPreview } from '@/components/link-preview';
+import { LinkifiedText } from '@/components/linkified-text';
 import { StashLabel } from '@/components/stash-label';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/user-avatar';
@@ -167,15 +169,21 @@ function useThread(
 export function CommitThread({
     commit,
     initialReplies,
+    actions,
 }: {
     commit: Commit;
     initialReplies?: CursorPaginated<ThreadCommit>;
+    actions?: ReactNode;
 }) {
     const thread = useThread(commit, initialReplies);
 
     return (
         <>
-            <ThreadActions thread={thread} hasKeyboardShortcuts />
+            <ThreadActions
+                thread={thread}
+                actions={actions}
+                hasKeyboardShortcuts
+            />
             <ThreadReplies thread={thread} depth={0} />
         </>
     );
@@ -183,9 +191,11 @@ export function CommitThread({
 
 function ThreadActions({
     thread,
+    actions,
     hasKeyboardShortcuts = false,
 }: {
     thread: Thread;
+    actions?: ReactNode;
     hasKeyboardShortcuts?: boolean;
 }) {
     const { auth } = usePage().props;
@@ -226,6 +236,8 @@ function ThreadActions({
                         )}
                     </button>
                 )}
+
+                {actions}
 
                 {thread.count > 0 && (
                     <button
@@ -516,8 +528,11 @@ function CommitReply({
                     )}
 
                     <p className="text-[15px] leading-relaxed [overflow-wrap:anywhere] break-words whitespace-pre-wrap">
-                        {emojify(reply.body)}
+                        <LinkifiedText text={emojify(reply.body)} />
                     </p>
+                    {reply.link_preview?.title && (
+                        <LinkPreview preview={reply.link_preview} />
+                    )}
 
                     {isConfirming ? (
                         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-destructive/8 px-3 py-1.5 text-sm">

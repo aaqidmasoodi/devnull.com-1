@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\CommitStatus;
 use App\Models\Commit;
+use App\Models\LinkPreview;
 use App\Models\User;
 
 test('to array', function (): void {
@@ -19,6 +20,7 @@ test('to array', function (): void {
             'status',
             'parent_id',
             'deleted_at',
+            'link_preview_id',
         ]);
 });
 
@@ -33,6 +35,31 @@ it('casts the status to an enum', function (): void {
     $commit = Commit::factory()->pending()->create()->refresh();
 
     expect($commit->status)->toBe(CommitStatus::Pending);
+});
+
+it('is visible when approved or owned', function (): void {
+    $author = User::factory()->create();
+    $viewer = User::factory()->create();
+    $approved = Commit::factory()->for($author)->create();
+    $pending = Commit::factory()->for($author)->pending()->create();
+    $rejected = Commit::factory()->for($author)->rejected()->create();
+
+    expect($approved->isVisibleTo($viewer))->toBeTrue()
+        ->and($pending->isVisibleTo($author))->toBeTrue()
+        ->and($pending->isVisibleTo($viewer))->toBeFalse()
+        ->and($rejected->isVisibleTo($author))->toBeTrue()
+        ->and($rejected->isVisibleTo($viewer))->toBeFalse();
+});
+
+it('deletes stars with the commit', function (): void {
+    $user = User::factory()->create();
+    $commit = Commit::factory()->create();
+
+    $user->starredCommits()->attach($commit);
+
+    $commit->delete();
+
+    expect($user->starredCommits()->count())->toBe(0);
 });
 
 it('may reply to another commit', function (): void {
@@ -76,4 +103,21 @@ it('serializes a deleted commit as a tombstone without its author or body', func
         'deleted_at' => $tombstone->deleted_at?->toJSON(),
         'replies_count' => 0,
     ]);
+});
+
+it('may belong to a link preview', function (): void {
+    $linkPreview = LinkPreview::factory()->create();
+    $commit = Commit::factory()->for($linkPreview)->create();
+
+    expect($commit->linkPreview->is($linkPreview))->toBeTrue()
+        ->and(Commit::factory()->create()->linkPreview)->toBeNull();
+});
+
+it('leaves the link preview out of a tombstone', function (): void {
+    $commit = Commit::factory()->for(LinkPreview::factory()->fetched())->create();
+    $commit->delete();
+
+    $tombstone = Commit::withTrashed()->with('linkPreview')->findOrFail($commit->id);
+
+    expect($tombstone->toArray())->not->toHaveKeys(['link_preview_id', 'link_preview']);
 });
