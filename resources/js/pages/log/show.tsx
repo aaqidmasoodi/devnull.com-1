@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/user-avatar';
 import { UserPreview } from '@/components/user-preview';
 import AppLayout from '@/layouts/app-layout';
+import { emojify } from '@/lib/emoji';
 import type { Commit, CursorPaginated, Log } from '@/types';
 
 export default function Show({
@@ -146,7 +147,7 @@ function Suggestions({ suggestions }: { suggestions: Commit[] }) {
                                 </span>
                             </p>
                             <p className="truncate text-sm text-muted-foreground">
-                                {commit.body}
+                                {emojify(commit.body)}
                             </p>
                         </div>
                         <Button size="sm" asChild>

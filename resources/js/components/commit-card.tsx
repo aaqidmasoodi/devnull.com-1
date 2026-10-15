@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/user-avatar';
 import { UserPreview } from '@/components/user-preview';
 import { useNow } from '@/hooks/use-now';
+import { emojify } from '@/lib/emoji';
 import {
     cn,
     formatFullDateTime,
@@ -234,7 +235,7 @@ export function CommitCard({
                                             : 'text-[15px]',
                                     )}
                                 >
-                                    {commit.body}
+                                    {emojify(commit.body)}
                                 </p>
                                 {isFocused && (
                                     <p className="mt-2 font-mono text-[13px] text-muted-foreground">

@@ -16,6 +16,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { UserPreview } from '@/components/user-preview';
 import { useNow } from '@/hooks/use-now';
 import { moveCaretToEnd, useHasStash, useStash } from '@/hooks/use-stash';
+import { emojify } from '@/lib/emoji';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { show } from '@/routes/user';
 import type { Commit } from '@/types';
@@ -311,7 +312,7 @@ function ReplyItem({
                     )}
 
                     <p className="text-[15px] leading-relaxed [overflow-wrap:anywhere] break-words whitespace-pre-wrap">
-                        {reply.body}
+                        {emojify(reply.body)}
                     </p>
 
                     {isConfirming ? (
