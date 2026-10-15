@@ -7,12 +7,15 @@ namespace App\Actions;
 use App\Enums\CommitStatus;
 use App\Models\Commit;
 use App\Models\User;
+use App\Services\EmojiShortcodes;
 use Illuminate\Support\Facades\DB;
 
 final readonly class CreateCommit
 {
-    public function __construct(private NotifyAboutReplies $notifyAboutReplies)
-    {
+    public function __construct(
+        private NotifyAboutReplies $notifyAboutReplies,
+        private EmojiShortcodes $emojiShortcodes,
+    ) {
         //
     }
 
@@ -20,7 +23,7 @@ final readonly class CreateCommit
     {
         return DB::transaction(function () use ($user, $body, $parent): Commit {
             $commit = $user->commits()->create([
-                'body' => $body,
+                'body' => $this->emojiShortcodes->replace($body),
                 'parent_id' => $parent?->id,
                 'status' => $user->isAdmin() ? CommitStatus::Approved : CommitStatus::Pending,
             ]);
