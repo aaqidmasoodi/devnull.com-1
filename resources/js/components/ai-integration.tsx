@@ -11,10 +11,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    type AIProvider,
-    useAIIntegration,
-} from '@/hooks/use-ai-integration';
+import { type AIProvider, useAIIntegration } from '@/hooks/use-ai-integration';
 import { AI_PROVIDER_META } from '@/lib/ai-providers';
 
 export default function AIIntegration() {
@@ -105,7 +102,7 @@ export default function AIIntegration() {
                             aria-label={
                                 showKey ? 'Hide API key' : 'Show API key'
                             }
-                            className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                            className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
                         >
                             {showKey ? (
                                 <EyeOff className="size-4" />

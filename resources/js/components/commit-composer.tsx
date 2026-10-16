@@ -15,12 +15,12 @@ import InputError from '@/components/input-error';
 import { MentionTextarea } from '@/components/mention-textarea';
 import { StashLabel } from '@/components/stash-label';
 import { Button } from '@/components/ui/button';
+import { useAIIntegration } from '@/hooks/use-ai-integration';
 import { useImageAttachments } from '@/hooks/use-image-attachments';
 import { moveCaretToEnd, useSeriesStash } from '@/hooks/use-stash';
-import { useAIIntegration } from '@/hooks/use-ai-integration';
 import { useUser } from '@/hooks/use-user';
-import { completeEmoji, suggestEmoji } from '@/lib/emoji';
 import { composeWithAI, rewriteWithAI } from '@/lib/ai-providers';
+import { completeEmoji, suggestEmoji } from '@/lib/emoji';
 import { characterCount, cn, laneColor } from '@/lib/utils';
 
 const minBodyLength = 3;
@@ -289,7 +289,7 @@ export function CommitComposer() {
                                             }
                                             aria-describedby={`${id}-count`}
                                             className={cn(
-                                                'block field-sizing-content min-h-10 w-full resize-none overflow-x-hidden bg-transparent py-1.5 text-[17px] leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:outline-none transition-opacity duration-150',
+                                                'block field-sizing-content min-h-10 w-full resize-none overflow-x-hidden bg-transparent py-1.5 text-[17px] leading-relaxed transition-opacity duration-150 outline-none placeholder:text-muted-foreground focus-visible:outline-none',
                                                 isLast &&
                                                     (aiMode === 'rewriting' ||
                                                         aiMode ===
@@ -540,7 +540,7 @@ export function CommitComposer() {
                                                                     aiMode ===
                                                                     'composing'
                                                                 }
-                                                                className="block h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-[13px] placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+                                                                className="block h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-[13px] placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-50"
                                                                 data-test="compose-prompt-input"
                                                             />
                                                             <Button
