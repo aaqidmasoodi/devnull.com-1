@@ -1,6 +1,7 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowUpRight, Download } from 'lucide-react';
 import ExportController from '@/actions/App/Http/Controllers/ExportController';
+import AIIntegration from '@/components/ai-integration';
 import DeleteUser from '@/components/delete-user';
 import { GitHubProfile } from '@/components/github-profile';
 import Heading from '@/components/heading';
@@ -70,6 +71,8 @@ export default function Edit({
                     </a>
                 </Button>
             </section>
+
+            <AIIntegration />
 
             <DeleteUser />
         </>
