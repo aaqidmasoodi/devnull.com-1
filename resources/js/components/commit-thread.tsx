@@ -2,11 +2,14 @@ import { Form, Link, router, usePage } from '@inertiajs/react';
 import {
     ChevronDown,
     CornerDownRight,
+    Loader2,
     MessageSquareReply,
+    Sparkles,
     Trash2,
+    X,
 } from 'lucide-react';
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import CommitController from '@/actions/App/Http/Controllers/CommitController';
 import CommitReplyController from '@/actions/App/Http/Controllers/CommitReplyController';
 import { BookmarkButton } from '@/components/bookmark-button';
@@ -26,11 +29,17 @@ import { StashLabel } from '@/components/stash-label';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/user-avatar';
 import { UserPreview } from '@/components/user-preview';
+import { useAIIntegration } from '@/hooks/use-ai-integration';
 import { useImageAttachments } from '@/hooks/use-image-attachments';
 import { focusCommit } from '@/hooks/use-keyboard-shortcuts';
 import { useNow } from '@/hooks/use-now';
 import { moveCaretToEnd, useHasStash, useStash } from '@/hooks/use-stash';
 import { useUser } from '@/hooks/use-user';
+import {
+    formatAIError,
+    suggestReplyWithAI,
+    summarizeThreadWithAI,
+} from '@/lib/ai-providers';
 import { signIn } from '@/lib/auth';
 import { completeEmoji, suggestEmoji } from '@/lib/emoji';
 import {
@@ -203,6 +212,51 @@ export function ThreadActions({
     const { auth } = usePage().props;
     const { commit } = thread;
     const hasStash = useHasStash(auth.user?.id ?? null, `reply-${commit.id}`);
+    const { config: aiConfig } = useAIIntegration();
+    const [summary, setSummary] = useState<string | null>(null);
+    const [isSummarizing, setIsSummarizing] = useState(false);
+    const [summaryError, setSummaryError] = useState<string | null>(null);
+    const summarizeAbortRef = useRef<AbortController | null>(null);
+
+    useEffect(
+        () => () => {
+            summarizeAbortRef.current?.abort();
+        },
+        [],
+    );
+
+    const canSummarize =
+        !isDeleted(commit) &&
+        aiConfig !== null &&
+        thread.replies !== null &&
+        thread.replies.length >= 2;
+
+    const handleSummarize = async (): Promise<void> => {
+        if (!aiConfig || isDeleted(commit) || !thread.replies) return;
+        summarizeAbortRef.current?.abort();
+        const controller = new AbortController();
+        summarizeAbortRef.current = controller;
+        setIsSummarizing(true);
+        setSummaryError(null);
+        try {
+            const replyBodies = thread.replies
+                .filter((r): r is Commit => !isDeleted(r))
+                .map((r) => r.body);
+            const result = await summarizeThreadWithAI(
+                commit.body,
+                replyBodies,
+                aiConfig,
+                controller.signal,
+            );
+            setSummary(result);
+        } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError')
+                return;
+            setSummaryError(formatAIError(err));
+        } finally {
+            setIsSummarizing(false);
+        }
+    };
 
     return (
         <>
@@ -272,6 +326,28 @@ export function ThreadActions({
                                 : `${thread.count} ${thread.count === 1 ? 'reply' : 'replies'}`}
                         </button>
                     )}
+
+                    {canSummarize && (
+                        <button
+                            type="button"
+                            onClick={() => void handleSummarize()}
+                            disabled={isSummarizing}
+                            title="Summarize this thread with AI"
+                            className="flex items-center gap-1 rounded-md px-2 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                            data-test="summarize-thread-button"
+                        >
+                            {isSummarizing ? (
+                                <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                                <Sparkles className="size-4" />
+                            )}
+                            {isSummarizing
+                                ? 'Summarizing…'
+                                : summary
+                                  ? 'Re-summarize'
+                                  : 'Summarize'}
+                        </button>
+                    )}
                 </div>
 
                 <div className="ml-auto flex items-center gap-0.5">
@@ -286,6 +362,28 @@ export function ThreadActions({
                     )}
                 </div>
             </div>
+
+            {summary !== null && (
+                <div className="mt-2 flex items-start gap-2 rounded-md border bg-accent/40 px-3 py-2.5">
+                    <Sparkles className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <p className="min-w-0 flex-1 text-[13px] leading-relaxed">
+                        {summary}
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => setSummary(null)}
+                        aria-label="Dismiss summary"
+                        className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                        <X className="size-3.5" />
+                    </button>
+                </div>
+            )}
+            {summaryError && (
+                <p className="mt-1.5 text-[13px] text-destructive">
+                    {summaryError}
+                </p>
+            )}
 
             {thread.isReplying && !isDeleted(commit) && (
                 <ReplyComposer
@@ -754,6 +852,40 @@ function ReplyComposer({
     const remaining = maxBodyLength - characterCount(body);
     const isReplyable = characterCount(body.trim()) >= 3;
     const suggestion = suggestEmoji(body);
+    const { config: aiConfig } = useAIIntegration();
+    const [aiMode, setAIMode] = useState<'idle' | 'suggesting'>('idle');
+    const [aiError, setAIError] = useState<string | null>(null);
+    const suggestAbortRef = useRef<AbortController | null>(null);
+
+    useEffect(
+        () => () => {
+            suggestAbortRef.current?.abort();
+        },
+        [],
+    );
+
+    const handleSuggest = async (): Promise<void> => {
+        if (!aiConfig) return;
+        suggestAbortRef.current?.abort();
+        const controller = new AbortController();
+        suggestAbortRef.current = controller;
+        setAIMode('suggesting');
+        setAIError(null);
+        try {
+            const result = await suggestReplyWithAI(
+                parent.body,
+                aiConfig,
+                controller.signal,
+            );
+            updateBody(result.slice(0, maxBodyLength));
+        } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError')
+                return;
+            setAIError(formatAIError(err));
+        } finally {
+            setAIMode('idle');
+        }
+    };
 
     const returnFocusToCommit = () => {
         const commit =
@@ -809,6 +941,8 @@ function ReplyComposer({
                     drop();
                     attachments.clear();
                     returnFocusToCommit();
+                    setAIMode('idle');
+                    setAIError(null);
                     onReplied();
                 }
             }}
@@ -836,7 +970,11 @@ function ReplyComposer({
                         onFocus={isRestored ? moveCaretToEnd : undefined}
                         maxLength={maxBodyLength}
                         placeholder={`Reply to @${parent.user.username}`}
-                        className="block field-sizing-content min-h-9 w-full resize-none overflow-x-hidden bg-transparent px-1 text-base leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:outline-none md:text-[15px]"
+                        className={cn(
+                            'block field-sizing-content min-h-9 w-full resize-none overflow-x-hidden bg-transparent px-1 text-base leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:outline-none md:text-[15px]',
+                            aiMode === 'suggesting' &&
+                                'opacity-40 transition-opacity duration-150',
+                        )}
                     />
                     <EmojiSuggestionHint
                         suggestion={suggestion}
@@ -854,6 +992,11 @@ function ReplyComposer({
                         message={attachments.error ?? imageErrorFrom(errors)}
                         className="mt-1 px-1"
                     />
+                    {aiError && (
+                        <p className="mt-1 px-1 text-[13px] text-destructive">
+                            {aiError}
+                        </p>
+                    )}
                     <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
                         <div className="mr-auto flex min-w-0 items-center gap-2">
                             <ImagePickerButton
@@ -874,6 +1017,27 @@ function ReplyComposer({
                                     }}
                                     className="px-1 text-xs"
                                 />
+                            )}
+                            {aiConfig !== null && (
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSuggest()}
+                                    disabled={
+                                        processing || aiMode === 'suggesting'
+                                    }
+                                    title="Suggest a reply with AI"
+                                    className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                                    data-test="suggest-reply-button"
+                                >
+                                    {aiMode === 'suggesting' ? (
+                                        <Loader2 className="size-4 animate-spin" />
+                                    ) : (
+                                        <Sparkles className="size-4" />
+                                    )}
+                                    {aiMode === 'suggesting'
+                                        ? 'Suggesting…'
+                                        : 'Suggest'}
+                                </button>
                             )}
                         </div>
                         <span

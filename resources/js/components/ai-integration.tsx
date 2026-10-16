@@ -1,4 +1,11 @@
-import { Eye, EyeOff, KeyRound, ShieldCheck, Trash2 } from 'lucide-react';
+import {
+    Eye,
+    EyeOff,
+    KeyRound,
+    Loader2,
+    ShieldCheck,
+    Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
@@ -12,7 +19,11 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { type AIProvider, useAIIntegration } from '@/hooks/use-ai-integration';
-import { AI_PROVIDER_META } from '@/lib/ai-providers';
+import {
+    AI_PROVIDER_META,
+    formatAIError,
+    validateApiKey,
+} from '@/lib/ai-providers';
 
 export default function AIIntegration() {
     const { config, saveConfig, clearConfig } = useAIIntegration();
@@ -22,16 +33,27 @@ export default function AIIntegration() {
     const [apiKey, setApiKey] = useState(config?.apiKey ?? '');
     const [showKey, setShowKey] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [validating, setValidating] = useState(false);
+    const [validationError, setValidationError] = useState<string | null>(null);
 
     const isDirty =
         provider !== config?.provider || apiKey !== (config?.apiKey ?? '');
     const canSave = apiKey.trim().length > 0 && isDirty;
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!apiKey.trim()) return;
-        saveConfig({ provider, apiKey: apiKey.trim() });
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+        setValidating(true);
+        setValidationError(null);
+        try {
+            await validateApiKey({ provider, apiKey: apiKey.trim() });
+            saveConfig({ provider, apiKey: apiKey.trim() });
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+        } catch (err) {
+            setValidationError(formatAIError(err));
+        } finally {
+            setValidating(false);
+        }
     };
 
     const handleClear = () => {
@@ -87,9 +109,12 @@ export default function AIIntegration() {
                             id="ai-api-key"
                             type={showKey ? 'text' : 'password'}
                             value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
+                            onChange={(e) => {
+                                setApiKey(e.target.value);
+                                setValidationError(null);
+                            }}
                             onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSave();
+                                if (e.key === 'Enter') void handleSave();
                             }}
                             placeholder={AI_PROVIDER_META[provider].placeholder}
                             autoComplete="off"
@@ -116,11 +141,19 @@ export default function AIIntegration() {
                 <div className="flex items-center gap-2">
                     <Button
                         type="button"
-                        onClick={handleSave}
-                        disabled={!canSave}
+                        onClick={() => void handleSave()}
+                        disabled={!canSave || validating}
                     >
-                        <KeyRound />
-                        {saved ? 'Saved!' : 'Save key'}
+                        {validating ? (
+                            <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                            <KeyRound />
+                        )}
+                        {validating
+                            ? 'Verifying…'
+                            : saved
+                              ? 'Saved!'
+                              : 'Save key'}
                     </Button>
                     {config && (
                         <Button
@@ -133,6 +166,12 @@ export default function AIIntegration() {
                         </Button>
                     )}
                 </div>
+
+                {validationError && (
+                    <p className="text-[13px] text-destructive">
+                        {validationError}
+                    </p>
+                )}
 
                 {config && (
                     <div className="flex items-center gap-1.5 text-sm">
