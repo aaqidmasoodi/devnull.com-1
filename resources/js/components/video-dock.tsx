@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { Maximize2, X } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -18,6 +19,7 @@ import {
 } from '@/lib/video-dock';
 import type { DockedVideo } from '@/lib/video-dock';
 import {
+    afterEmbedLeft,
     closeAction,
     cornerBox,
     dockSize,
@@ -104,6 +106,7 @@ type Controller = {
     returnBlockedOn: string | null;
     hiddenSince: number | null;
     playback: Playback;
+    isAutomatic: boolean;
 };
 
 function viewport(): Size {
@@ -207,6 +210,7 @@ export function VideoDock() {
 }
 
 function DockedPlayer({ video }: { video: DockedVideo }) {
+    const { autoPictureInPicture } = usePage().props;
     const wrapper = useRef<HTMLDivElement>(null);
     const frame = useRef<HTMLIFrameElement>(null);
     const [src] = useState(() =>
@@ -238,6 +242,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 returnBlockedOn: null,
                 hiddenSince: null,
                 playback: 'unknown',
+                isAutomatic: autoPictureInPicture,
             };
         }
 
@@ -369,6 +374,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     const hasScrolledPast = (rect: DOMRect, now: number): boolean => {
         const current = state();
         const isAway =
+            current.isAutomatic &&
             visibleFraction(rect, viewport()) < popOutBelow &&
             current.playback !== 'paused';
 
@@ -497,7 +503,9 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 const slot = current.slot;
 
                 if (slot === null || !slot.isConnected) {
-                    flyToCorner();
+                    current.slot = null;
+                    current.stage = 'holding';
+                    current.since = now;
 
                     return;
                 }
@@ -526,7 +534,9 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             }
 
             const slot = current.returnBlockedOn === null ? homeSlot() : null;
+            // Brought back by hand, or by closing it, rather than by itself, unless picture-in-picture is automatic.
             const visibleSlot =
+                current.isAutomatic &&
                 slot !== null &&
                 visibleFraction(slot.getBoundingClientRect(), viewport()) >=
                     returnAbove
@@ -561,8 +571,21 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             }
 
             if (current.stage === 'holding') {
-                if (now - current.since >= settleDelay) {
+                if (now - current.since < settleDelay) {
+                    return;
+                }
+
+                const action = afterEmbedLeft(
+                    current.isAutomatic,
+                    slot !== null,
+                );
+
+                if (action === 'float') {
                     flyToCorner();
+                } else if (action === 'return' && slot !== null) {
+                    flyInto(slot);
+                } else {
+                    closeVideo();
                 }
 
                 return;
@@ -591,6 +614,12 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     }, []);
 
     useEffect(() => setVideoFloating(isFloating), [isFloating]);
+
+    useEffect(() => {
+        state().isAutomatic = autoPictureInPicture;
+        // The controller is created once and lives as long as the player.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoPictureInPicture]);
 
     useEffect(() => {
         if (frame.current === null) {

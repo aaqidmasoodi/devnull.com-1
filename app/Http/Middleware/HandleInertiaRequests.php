@@ -69,6 +69,7 @@ final class HandleInertiaRequests extends Middleware
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'showsWhoToFollow' => $showsWhoToFollow,
             'dimsLanes' => $request->cookie('lane_dimming') !== 'false',
+            'autoPictureInPicture' => $request->cookie('auto_picture_in_picture') !== 'false',
             'repliesPerPage' => RepliesPerPage::of($request)->value,
             // Onboarding has no sidebar to show them in, and the people followed during it change who is suggested.
             ...$user instanceof User && $showsWhoToFollow && ! $request->routeIs('onboarding.show') ? [

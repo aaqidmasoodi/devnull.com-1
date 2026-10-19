@@ -152,6 +152,21 @@ export function closeAction(embedFraction: number | null): 'return' | 'stop' {
         : 'stop';
 }
 
+/**
+ * Once the embed a video was playing in has left the page, and hasn't come back into view, it floats on if
+ * picture-in-picture is automatic. If not, it goes back to its embed when the page still has one, and stops otherwise.
+ */
+export function afterEmbedLeft(
+    isAutomatic: boolean,
+    hasHomeEmbed: boolean,
+): 'float' | 'return' | 'stop' {
+    if (isAutomatic) {
+        return 'float';
+    }
+
+    return hasHomeEmbed ? 'return' : 'stop';
+}
+
 export function visibleFraction(
     rect: { top: number; height: number },
     viewport: Size,

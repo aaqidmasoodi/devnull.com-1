@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+    afterEmbedLeft,
     closeAction,
     cornerBox,
     defaultDockLength,
@@ -236,4 +237,14 @@ await test('closing stops a video whose embed is scrolled away or gone', () => {
     assert.equal(closeAction(popOutBelow - 0.01), 'stop');
     assert.equal(closeAction(0), 'stop');
     assert.equal(closeAction(null), 'stop');
+});
+
+await test('floats on when its embed leaves while picture-in-picture is automatic', () => {
+    assert.equal(afterEmbedLeft(true, false), 'float');
+    assert.equal(afterEmbedLeft(true, true), 'float');
+});
+
+await test('goes back to its embed or stops when picture-in-picture is not automatic', () => {
+    assert.equal(afterEmbedLeft(false, true), 'return');
+    assert.equal(afterEmbedLeft(false, false), 'stop');
 });
