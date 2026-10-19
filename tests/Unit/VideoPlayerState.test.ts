@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+    canGoFullscreen,
+    goFullscreen,
     playbackFromMessage,
     playerApiSrc,
     subscriptionMessages,
 } from '../../resources/js/lib/video-player-state.ts';
+import type { FullscreenTarget } from '../../resources/js/lib/video-player-state.ts';
 
 const youtube = 'https://www.youtube-nocookie.com/embed/5C_HPTJg5ek?autoplay=1';
 const vimeo = 'https://player.vimeo.com/video/76979871?autoplay=1';
@@ -84,4 +87,48 @@ await test('subscribes to the players that report their state', () => {
         ],
     );
     assert.deepEqual(subscriptionMessages(loom), []);
+});
+
+await test('knows when the page can go full screen', () => {
+    assert.equal(canGoFullscreen({ fullscreenEnabled: true }), true);
+    assert.equal(
+        canGoFullscreen({
+            fullscreenEnabled: false,
+            webkitFullscreenEnabled: true,
+        }),
+        true,
+    );
+    assert.equal(canGoFullscreen({ fullscreenEnabled: false }), false);
+});
+
+await test('puts the player full screen', () => {
+    let requests = 0;
+
+    goFullscreen({
+        requestFullscreen: () => {
+            requests++;
+
+            return Promise.resolve();
+        },
+    } as unknown as FullscreenTarget);
+
+    assert.equal(requests, 1);
+});
+
+await test('falls back to the prefixed full screen', () => {
+    let requests = 0;
+
+    goFullscreen({
+        webkitRequestFullscreen: () => requests++,
+    } as unknown as FullscreenTarget);
+
+    assert.equal(requests, 1);
+});
+
+await test('shrugs off a refused full screen', async () => {
+    goFullscreen({
+        requestFullscreen: () => Promise.reject(new Error('Permissions check failed')),
+    } as unknown as FullscreenTarget);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
 });

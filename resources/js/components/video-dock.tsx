@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { Maximize2, X } from 'lucide-react';
+import { CornerUpLeft, Maximize, X } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -36,7 +36,12 @@ import type {
     Point,
     Size,
 } from '@/lib/video-dock-geometry';
-import { playerApiSrc, watchPlayback } from '@/lib/video-player-state';
+import {
+    canGoFullscreen,
+    goFullscreen,
+    playerApiSrc,
+    watchPlayback,
+} from '@/lib/video-player-state';
 import type { Playback } from '@/lib/video-player-state';
 
 /**
@@ -197,6 +202,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     const [src] = useState(() =>
         playerApiSrc(video.src, window.location.origin),
     );
+    const [isFullscreenSupported] = useState(canGoFullscreen);
     const surface = useRef<HTMLDivElement>(null);
     const controller = useRef<Controller | null>(null);
     const hideControls = useRef<number | null>(null);
@@ -765,14 +771,17 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                         </div>
                     ))}
 
-                    <div className="absolute top-[calc(100%+8px)] left-1/2 flex -translate-x-1/2 items-center gap-2">
-                        <DockButton
-                            label="Close video"
-                            onClick={closeVideo}
-                            className={controlPointerEvents}
-                        >
-                            <X className="size-4" />
-                        </DockButton>
+                    {/* Equal columns either side keep the grabber centred under the player. */}
+                    <div className="absolute top-[calc(100%+8px)] left-1/2 grid -translate-x-1/2 grid-cols-[1fr_auto_1fr] items-center gap-2">
+                        <div className="flex justify-end gap-2">
+                            <DockButton
+                                label="Close video"
+                                onClick={closeVideo}
+                                className={controlPointerEvents}
+                            >
+                                <X className="size-4" />
+                            </DockButton>
+                        </div>
                         <div
                             onPointerDown={startDrag}
                             onPointerMove={move}
@@ -791,13 +800,27 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                         >
                             <span className="h-2 w-28 rounded-full bg-neutral-900 shadow-[0_2px_8px_rgb(0_0_0/0.2)] transition-[width] duration-200 group-hover/grabber:w-32 dark:bg-white dark:shadow-[0_0_0_1px_rgb(0_0_0/0.15),0_2px_8px_rgb(0_0_0/0.35)]" />
                         </div>
-                        <DockButton
-                            label="Back to video"
-                            onClick={goBack}
-                            className={controlPointerEvents}
-                        >
-                            <Maximize2 className="size-4" />
-                        </DockButton>
+                        <div className="flex gap-2">
+                            <DockButton
+                                label="Back to video"
+                                onClick={goBack}
+                                className={controlPointerEvents}
+                            >
+                                <CornerUpLeft className="size-4" />
+                            </DockButton>
+                            {isFullscreenSupported && (
+                                <DockButton
+                                    label="Full screen"
+                                    onClick={() =>
+                                        frame.current &&
+                                        goFullscreen(frame.current)
+                                    }
+                                    className={controlPointerEvents}
+                                >
+                                    <Maximize className="size-4" />
+                                </DockButton>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

@@ -189,3 +189,28 @@ export function watchPlayback(
         frame.removeEventListener('load', subscribe);
     };
 }
+
+export type FullscreenTarget = HTMLElement & {
+    webkitRequestFullscreen?: () => void;
+};
+
+/**
+ * Safari on iPad still only knows the prefixed API, and Safari on iPhone can't put a frame full screen at all.
+ */
+export function canGoFullscreen(
+    page: Pick<Document, 'fullscreenEnabled'> & {
+        webkitFullscreenEnabled?: boolean;
+    } = document,
+): boolean {
+    return page.fullscreenEnabled || page.webkitFullscreenEnabled === true;
+}
+
+export function goFullscreen(element: FullscreenTarget): void {
+    if (typeof element.requestFullscreen === 'function') {
+        void element.requestFullscreen().catch(() => undefined);
+
+        return;
+    }
+
+    element.webkitRequestFullscreen?.();
+}
