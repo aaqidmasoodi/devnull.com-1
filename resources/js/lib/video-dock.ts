@@ -147,6 +147,37 @@ export function registerVideoSlot(
     };
 }
 
+/**
+ * Only an embed in the page itself, scrolled by the window, can hand its video to the floating player, which is laid
+ * over the page. One in a panel that scrolls on its own or floats above the page, like a chat or the photo viewer,
+ * would leave the player behind it or drifting over its edges, so it plays in place.
+ */
+export function canPlayFloating(element: Element): boolean {
+    const main = element.closest('[data-main]');
+
+    if (main === null || element.closest('[role="dialog"]') !== null) {
+        return false;
+    }
+
+    for (
+        let node = element.parentElement;
+        node !== null && node !== main;
+        node = node.parentElement
+    ) {
+        const { overflowY, position } = getComputedStyle(node);
+
+        if (
+            overflowY === 'auto' ||
+            overflowY === 'scroll' ||
+            position === 'fixed'
+        ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 export function videoSlot(src: string): HTMLElement | null {
     return (
         slots.find((slot) => slot.src === src && slot.element.isConnected)

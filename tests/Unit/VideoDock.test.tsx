@@ -33,6 +33,7 @@ const { TooltipProvider } = await import(
     '../../resources/js/components/ui/tooltip'
 );
 const {
+    canPlayFloating,
     closeVideo,
     dockedVideo,
     playVideo,
@@ -276,4 +277,86 @@ test('remembers a phone and a wide screen apart', () => {
         corner: 'top-left',
         length: 640,
     });
+});
+
+type FakeNode = {
+    parentElement: FakeNode | null;
+    style: { overflowY: string; position: string };
+    isMain?: boolean;
+    isDialog?: boolean;
+    closest: (selector: string) => FakeNode | null;
+};
+
+const fakeNode = (
+    parent: FakeNode | null,
+    style: Partial<FakeNode['style']> = {},
+    flags: { isMain?: boolean; isDialog?: boolean } = {},
+): FakeNode => {
+    const node: FakeNode = {
+        parentElement: parent,
+        style: { overflowY: 'visible', position: 'static', ...style },
+        ...flags,
+        closest: (selector) => {
+            for (let current: FakeNode | null = node; current !== null; current = current.parentElement) {
+                if (selector.includes('data-main') && current.isMain) {
+                    return current;
+                }
+
+                if (selector.includes('dialog') && current.isDialog) {
+                    return current;
+                }
+            }
+
+            return null;
+        },
+    };
+
+    return node;
+};
+
+const canFloatIn = (embed: FakeNode): boolean => {
+    const original = globalThis.getComputedStyle;
+
+    globalThis.getComputedStyle = ((node: FakeNode) =>
+        node.style) as unknown as typeof getComputedStyle;
+
+    try {
+        return canPlayFloating(embed as unknown as Element);
+    } finally {
+        globalThis.getComputedStyle = original;
+    }
+};
+
+test('floats a video played from the page itself', () => {
+    const main = fakeNode(null, {}, { isMain: true });
+    const card = fakeNode(fakeNode(main), { overflowY: 'hidden' });
+
+    assert.equal(canFloatIn(fakeNode(card)), true);
+});
+
+test('plays in place inside a thread that scrolls on its own, like a conversation', () => {
+    const main = fakeNode(null, {}, { isMain: true });
+    const thread = fakeNode(main, { overflowY: 'auto' });
+
+    assert.equal(canFloatIn(fakeNode(fakeNode(thread))), false);
+});
+
+test('plays in place inside a panel fixed above the page', () => {
+    const main = fakeNode(null, {}, { isMain: true });
+    const panel = fakeNode(main, { position: 'fixed' });
+
+    assert.equal(canFloatIn(fakeNode(panel)), false);
+});
+
+test('plays in place inside a dialog', () => {
+    const main = fakeNode(null, {}, { isMain: true });
+    const dialog = fakeNode(main, {}, { isDialog: true });
+
+    assert.equal(canFloatIn(fakeNode(dialog)), false);
+});
+
+test('plays in place outside the page, like the chat dock or the photo viewer', () => {
+    const dock = fakeNode(null, { position: 'fixed' });
+
+    assert.equal(canFloatIn(fakeNode(dock)), false);
 });

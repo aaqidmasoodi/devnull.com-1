@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { ActionTooltip } from '@/components/action-tooltip';
 import { cn } from '@/lib/utils';
 import {
+    canPlayFloating,
     playVideo,
     playVideoHere,
     popOutVideo,
@@ -199,6 +200,12 @@ export function LinkEmbed({
     isStatic?: boolean;
 }) {
     const [isPlaying, setIsPlaying] = useState(false);
+    const [canFloat, setCanFloat] = useState(true);
+    const measure = useCallback(
+        (element: HTMLDivElement | null) =>
+            setCanFloat(element === null || canPlayFloating(element)),
+        [],
+    );
     const dockedVideo = useDockedVideo();
     const isVideoFloating = useIsVideoFloating();
     const Icon = icons[embed.kind];
@@ -207,9 +214,9 @@ export function LinkEmbed({
     const poster = preview.image_url ?? embed.poster ?? null;
     const title = preview.title ?? `${embed.provider} player`;
     const aspectRatio = parseAspectRatio(embed.aspect_ratio);
-    const isDocked = !isStatic && dockedVideo?.src === embed.src;
+    const isDocked = !isStatic && canFloat && dockedVideo?.src === embed.src;
     const play = () =>
-        aspectRatio === null
+        aspectRatio === null || !canFloat
             ? setIsPlaying(true)
             : playVideo({
                   src: embed.src,
@@ -223,6 +230,7 @@ export function LinkEmbed({
 
     return (
         <div
+            ref={measure}
             onClick={isStatic ? undefined : (event) => event.stopPropagation()}
             className="mt-3 overflow-hidden rounded-lg border"
             data-test="link-embed"
