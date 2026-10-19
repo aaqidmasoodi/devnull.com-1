@@ -1,12 +1,15 @@
 import { AudioLines, Code2, PictureInPicture2, Play } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useState } from 'react';
+import { ActionTooltip } from '@/components/action-tooltip';
 import { cn } from '@/lib/utils';
 import {
     playVideo,
     playVideoHere,
+    popOutVideo,
     registerVideoSlot,
     useDockedVideo,
+    useIsVideoFloating,
 } from '@/lib/video-dock';
 import { parseAspectRatio } from '@/lib/video-dock-geometry';
 import type { Embed, LinkPreview } from '@/types';
@@ -194,6 +197,7 @@ export function LinkEmbed({
 }) {
     const [isPlaying, setIsPlaying] = useState(false);
     const dockedVideo = useDockedVideo();
+    const isVideoFloating = useIsVideoFloating();
     const Icon = icons[embed.kind];
     const label = `Play ${preview.title ?? preview.url} from ${embed.provider}`;
     const isVideo = embed.aspect_ratio !== null;
@@ -257,14 +261,31 @@ export function LinkEmbed({
                             <Details preview={preview} embed={embed} />
                         </span>
                     ) : (
-                        <a
-                            href={preview.url}
-                            target="_blank"
-                            rel="noopener noreferrer nofollow ugc"
-                            className="flex border-t px-3 py-2 transition-colors hover:bg-accent focus-visible:bg-accent"
-                        >
-                            <Details preview={preview} embed={embed} />
-                        </a>
+                        <div className="flex border-t">
+                            <a
+                                href={preview.url}
+                                target="_blank"
+                                rel="noopener noreferrer nofollow ugc"
+                                className="flex min-w-0 flex-1 px-3 py-2 transition-colors hover:bg-accent focus-visible:bg-accent"
+                            >
+                                <Details preview={preview} embed={embed} />
+                            </a>
+                            {isDocked && !isVideoFloating && (
+                                <span className="flex items-center pr-2 pl-1">
+                                    <ActionTooltip label="Picture-in-picture">
+                                        <button
+                                            type="button"
+                                            onClick={popOutVideo}
+                                            aria-label="Play in picture-in-picture"
+                                            className="flex size-9 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:outline-none"
+                                            data-test="link-embed-pop-out"
+                                        >
+                                            <PictureInPicture2 className="size-5" />
+                                        </button>
+                                    </ActionTooltip>
+                                </span>
+                            )}
+                        </div>
                     )}
                 </>
             ) : isPlaying ? (

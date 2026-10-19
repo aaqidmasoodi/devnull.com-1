@@ -16,7 +16,12 @@ export type Obstacle = { left: number; right: number; top: number };
 
 export type DockPlacement = { corner: Corner; length: number };
 
-export const dockMargin = 16;
+/**
+ * The resize handles curve around the player's corners from just outside it, and the grabber hangs below it, so the
+ * player keeps clear of the screen's edges by enough to leave them room.
+ */
+export const dockMargin = 24;
+export const dockGrabberSpace = 52;
 export const minDockLength = 200;
 export const maxDockLength = 720;
 
@@ -48,7 +53,7 @@ export function dockSize(
     const scale = Math.min(
         1,
         (viewport.width - dockMargin * 2) / size.width,
-        (viewport.height - dockMargin * 2) / size.height,
+        (viewport.height - dockMargin - dockGrabberSpace) / size.height,
     );
 
     return {
@@ -82,7 +87,7 @@ export function cornerBox(
 
     return {
         x,
-        y: Math.max(dockMargin, floor - dockMargin - size.height),
+        y: Math.max(dockMargin, floor - dockGrabberSpace - size.height),
         ...size,
     };
 }
@@ -104,24 +109,30 @@ export function nearestCorner(
 }
 
 /**
- * Resizing pulls the corner that faces the page, while the opposite one stays put against the edge of the screen.
+ * Resizing pulls one corner while the opposite one, the anchor, stays put.
  */
 export function resizedLength(
-    corner: Corner,
+    anchor: Corner,
     box: Box,
     pointer: Point,
     aspectRatio: number,
 ): number {
-    const width = corner.endsWith('left')
+    const width = anchor.endsWith('left')
         ? pointer.x - box.x
         : box.x + box.width - pointer.x;
-    const height = corner.startsWith('top')
+    const height = anchor.startsWith('top')
         ? pointer.y - box.y
         : box.y + box.height - pointer.y;
 
     return aspectRatio >= 1
         ? Math.max(width, height * aspectRatio)
         : Math.max(height, width / aspectRatio);
+}
+
+export function oppositeCorner(corner: Corner): Corner {
+    const [vertical, horizontal] = corner.split('-');
+
+    return `${vertical === 'top' ? 'bottom' : 'top'}-${horizontal === 'left' ? 'right' : 'left'}`;
 }
 
 export function isMostlyInView(

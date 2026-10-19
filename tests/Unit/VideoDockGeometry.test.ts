@@ -8,7 +8,9 @@ import {
     isMostlyInView,
     maxDockLength,
     minDockLength,
+    dockGrabberSpace,
     nearestCorner,
+    oppositeCorner,
     parseAspectRatio,
     resizedLength,
 } from '../../resources/js/lib/video-dock-geometry.ts';
@@ -56,15 +58,22 @@ await test('places the player in each corner of the screen', () => {
     const size = { width: 320, height: 180 };
 
     assert.deepEqual(cornerBox('top-left', size, desktop), {
-        x: 16,
-        y: 16,
+        x: 24,
+        y: 24,
         ...size,
     });
     assert.deepEqual(cornerBox('bottom-right', size, desktop), {
-        x: 1104,
-        y: 704,
+        x: 1096,
+        y: 668,
         ...size,
     });
+});
+
+await test('leaves room for the grabber below the player', () => {
+    const size = { width: 320, height: 180 };
+    const box = cornerBox('bottom-left', size, desktop);
+
+    assert.equal(desktop.height - (box.y + box.height), dockGrabberSpace);
 });
 
 await test('rests above what is fixed to the bottom of the screen beneath it', () => {
@@ -72,9 +81,9 @@ await test('rests above what is fixed to the bottom of the screen beneath it', (
     const mobileNav = { left: 0, right: 1440, top: 836 };
     const chatDock = { left: 1056, right: 1416, top: 852 };
 
-    assert.equal(cornerBox('bottom-left', size, desktop, [mobileNav]).y, 640);
-    assert.equal(cornerBox('bottom-right', size, desktop, [chatDock]).y, 656);
-    assert.equal(cornerBox('bottom-left', size, desktop, [chatDock]).y, 704);
+    assert.equal(cornerBox('bottom-left', size, desktop, [mobileNav]).y, 604);
+    assert.equal(cornerBox('bottom-right', size, desktop, [chatDock]).y, 620);
+    assert.equal(cornerBox('bottom-left', size, desktop, [chatDock]).y, 668);
 });
 
 await test('settles in the corner it is let go nearest to', () => {
@@ -94,7 +103,14 @@ await test('carries a fling on to the corner it was thrown toward', () => {
     );
 });
 
-await test('resizes from the corner that faces the page', () => {
+await test('anchors a resize at the opposite corner', () => {
+    assert.equal(oppositeCorner('top-left'), 'bottom-right');
+    assert.equal(oppositeCorner('top-right'), 'bottom-left');
+    assert.equal(oppositeCorner('bottom-left'), 'top-right');
+    assert.equal(oppositeCorner('bottom-right'), 'top-left');
+});
+
+await test('resizes from any corner, keeping the anchor still', () => {
     const box = { x: 1104, y: 704, width: 320, height: 180 };
 
     assert.equal(

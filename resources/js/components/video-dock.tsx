@@ -10,7 +10,9 @@ import {
     currentPageUrl,
     dockedVideo,
     readDockPlacement,
+    setVideoFloating,
     takeClaimedSlot,
+    takePopOutRequest,
     useDockedVideo,
     videoSlot,
     writeDockPlacement,
@@ -21,6 +23,7 @@ import {
     dockSize,
     isMostlyInView,
     nearestCorner,
+    oppositeCorner,
     resizedLength,
 } from '@/lib/video-dock-geometry';
 import type {
@@ -45,25 +48,28 @@ const flight = [
     `height ${flightDuration}ms cubic-bezier(0.16, 1, 0.3, 1)`,
 ].join(', ');
 
-const resizeHandles: Record<Corner, string> = {
-    'bottom-right': 'top-0 left-0 cursor-nwse-resize',
-    'bottom-left': 'top-0 right-0 cursor-nesw-resize',
-    'top-right': 'bottom-0 left-0 cursor-nesw-resize',
-    'top-left': 'right-0 bottom-0 cursor-nwse-resize',
-};
+const corners: Corner[] = [
+    'top-left',
+    'top-right',
+    'bottom-left',
+    'bottom-right',
+];
 
-const resizeGrips: Record<Corner, string> = {
-    'bottom-right': 'top-1.5 left-1.5 rounded-tl-md border-t-2 border-l-2',
-    'bottom-left': 'top-1.5 right-1.5 rounded-tr-md border-t-2 border-r-2',
-    'top-right': 'bottom-1.5 left-1.5 rounded-bl-md border-b-2 border-l-2',
-    'top-left': 'right-1.5 bottom-1.5 rounded-br-md border-r-2 border-b-2',
+/**
+ * Each handle sits over a corner from just outside the player, its arc drawn for the top left and turned to fit.
+ */
+const resizeHandles: Record<Corner, string> = {
+    'top-left': '-top-3.5 -left-3.5 cursor-nwse-resize',
+    'top-right': '-top-3.5 -right-3.5 rotate-90 cursor-nesw-resize',
+    'bottom-right': '-right-3.5 -bottom-3.5 rotate-180 cursor-nwse-resize',
+    'bottom-left': '-bottom-3.5 -left-3.5 -rotate-90 cursor-nesw-resize',
 };
 
 type Stage = 'pending' | 'inline' | 'holding' | 'flying' | 'floating';
 
 type Interaction =
     | { kind: 'drag'; offset: Point; samples: (Point & { time: number })[] }
-    | { kind: 'resize'; start: Box; length: number };
+    | { kind: 'resize'; anchor: Corner; start: Box; length: number };
 
 type Controller = {
     stage: Stage;
@@ -76,6 +82,7 @@ type Controller = {
     placement: DockPlacement;
     interaction: Interaction | null;
     flight: number | null;
+    returnBlockedOn: string | null;
 };
 
 function viewport(): Size {
@@ -184,7 +191,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     const controller = useRef<Controller | null>(null);
     const hideControls = useRef<number | null>(null);
     const [isFloating, setIsFloating] = useState(false);
-    const [corner, setCorner] = useState<Corner>('bottom-right');
     const [isInteracting, setIsInteracting] = useState(false);
     const [isShowingControls, setIsShowingControls] = useState(false);
 
@@ -201,6 +207,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 placement: readDockPlacement(viewport()),
                 interaction: null,
                 flight: null,
+                returnBlockedOn: null,
             };
         }
 
@@ -299,7 +306,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         const current = state();
 
         current.slot = null;
-        setCorner(current.placement.corner);
         setIsFloating(true);
 
         if (surface.current !== null) {
@@ -327,6 +333,8 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             const claimed = takeClaimedSlot();
 
             if (claimed !== null) {
+                current.returnBlockedOn = null;
+
                 if (current.stage === 'pending') {
                     attach(claimed);
                 } else if (claimed !== current.slot) {
@@ -342,6 +350,15 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
 
             if (current.stage === 'inline') {
                 const slot = current.slot;
+
+                // Popped out by hand, it stays out on this page until asked back, rather than flying straight home.
+                if (takePopOutRequest() && slot !== null && slot.isConnected) {
+                    lift(toBox(slot.getBoundingClientRect()));
+                    current.returnBlockedOn = currentPageUrl();
+                    flyToCorner();
+
+                    return;
+                }
 
                 if (slot !== null && slot.isConnected) {
                     const box = documentBox(slot);
@@ -362,8 +379,18 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             }
 
             // Only the page the video was playing on takes it back by itself; anywhere else, its embeds offer to.
+            const pageUrl = currentPageUrl();
+
+            if (
+                current.returnBlockedOn !== null &&
+                current.returnBlockedOn !== pageUrl
+            ) {
+                current.returnBlockedOn = null;
+            }
+
             const slot =
-                currentPageUrl() === dockedVideo()?.pageUrl
+                pageUrl === dockedVideo()?.pageUrl &&
+                current.returnBlockedOn === null
                     ? videoSlot(video.src)
                     : null;
             const visibleSlot =
@@ -376,7 +403,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 if (visibleSlot !== null) {
                     attach(visibleSlot);
                 } else if (now - current.since >= settleDelay) {
-                    setCorner(current.placement.corner);
                     setIsFloating(true);
                     place('fixed', cornerTarget());
                     current.stage = 'floating';
@@ -429,8 +455,12 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => setVideoFloating(isFloating), [isFloating]);
+
     useEffect(
         () => () => {
+            setVideoFloating(false);
+
             if (hideControls.current !== null) {
                 window.clearTimeout(hideControls.current);
             }
@@ -484,11 +514,15 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         });
     };
 
-    const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const startResize = (
+        event: ReactPointerEvent<HTMLDivElement>,
+        handle: Corner,
+    ) => {
         const { box, placement } = state();
 
         startInteraction(event, {
             kind: 'resize',
+            anchor: oppositeCorner(handle),
             start: box,
             length: placement.length,
         });
@@ -529,10 +563,10 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             return;
         }
 
-        const { start } = interaction;
+        const { anchor, start } = interaction;
         const resized = dockSize(
             resizedLength(
-                current.placement.corner,
+                anchor,
                 start,
                 { x: event.clientX, y: event.clientY },
                 video.aspectRatio,
@@ -544,10 +578,10 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         interaction.length = Math.max(resized.width, resized.height);
         place('fixed', {
             ...resized,
-            x: current.placement.corner.endsWith('right')
+            x: anchor.endsWith('right')
                 ? start.x + start.width - resized.width
                 : start.x,
-            y: current.placement.corner.startsWith('bottom')
+            y: anchor.startsWith('bottom')
                 ? start.y + start.height - resized.height
                 : start.y,
         });
@@ -583,7 +617,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                     viewport(),
                 ),
             };
-            setCorner(current.placement.corner);
         } else {
             current.placement = {
                 ...current.placement,
@@ -614,6 +647,12 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         });
     };
 
+    const areControlsActive = isShowingControls || isInteracting;
+    const controlPointerEvents = cn(
+        'group-has-focus-visible/dock:pointer-events-auto [@media(hover:none)]:pointer-events-auto',
+        { 'pointer-events-auto': areControlsActive },
+    );
+
     return (
         <div
             ref={wrapper}
@@ -641,79 +680,85 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                         'pointer-events-none': isInteracting,
                     })}
                 />
+            </div>
 
-                {isFloating && (
-                    <div
-                        className={cn(
-                            'pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-has-focus-visible/dock:opacity-100 [@media(hover:none)]:opacity-100',
-                            {
-                                'opacity-100':
-                                    isShowingControls || isInteracting,
-                            },
-                        )}
-                    >
+            {isFloating && (
+                <div
+                    className={cn(
+                        'pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-has-focus-visible/dock:opacity-100 [@media(hover:none)]:opacity-100',
+                        { 'opacity-100': areControlsActive },
+                    )}
+                >
+                    {corners.map((handle) => (
                         <div
-                            onPointerDown={startDrag}
-                            onPointerMove={move}
-                            onPointerUp={endInteraction}
-                            onPointerCancel={endInteraction}
-                            onLostPointerCapture={endInteraction}
-                            className={cn(
-                                'absolute inset-x-0 top-0 flex h-12 touch-none items-start justify-end gap-1 bg-linear-to-b from-black/70 to-transparent p-1.5 select-none',
-                                isInteracting
-                                    ? 'cursor-grabbing'
-                                    : 'cursor-grab',
-                                {
-                                    'pointer-events-auto':
-                                        isShowingControls || isInteracting,
-                                },
-                                'group-has-focus-visible/dock:pointer-events-auto [@media(hover:none)]:pointer-events-auto',
-                            )}
-                            data-test="video-dock-handle"
-                        >
-                            <span
-                                aria-hidden
-                                className="absolute top-2 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-white/60"
-                            />
-                            <DockButton label="Back to video" onClick={goBack}>
-                                <Maximize2 className="size-4" />
-                            </DockButton>
-                            <DockButton
-                                label="Close video"
-                                onClick={closeVideo}
-                            >
-                                <X className="size-4" />
-                            </DockButton>
-                        </div>
-
-                        <div
-                            onPointerDown={startResize}
+                            key={handle}
+                            onPointerDown={(event) =>
+                                startResize(event, handle)
+                            }
                             onPointerMove={move}
                             onPointerUp={endInteraction}
                             onPointerCancel={endInteraction}
                             onLostPointerCapture={endInteraction}
                             aria-hidden
                             className={cn(
-                                'absolute size-6 touch-none',
-                                resizeHandles[corner],
-                                {
-                                    'pointer-events-auto':
-                                        isShowingControls || isInteracting,
-                                },
-                                'group-has-focus-visible/dock:pointer-events-auto [@media(hover:none)]:pointer-events-auto',
+                                'group/handle absolute size-10 touch-none',
+                                resizeHandles[handle],
+                                controlPointerEvents,
                             )}
                             data-test="video-dock-resize"
                         >
-                            <span
-                                className={cn(
-                                    'absolute size-2.5 border-white/80',
-                                    resizeGrips[corner],
-                                )}
-                            />
+                            <svg
+                                viewBox="0 0 40 40"
+                                className="size-full drop-shadow-[0_1px_3px_rgb(0_0_0/0.45)] transition-transform duration-200 group-hover/handle:scale-110"
+                            >
+                                <path
+                                    d="M7 26A19 19 0 0 1 26 7"
+                                    fill="none"
+                                    stroke="white"
+                                    strokeOpacity={0.9}
+                                    strokeWidth={5}
+                                    strokeLinecap="round"
+                                />
+                            </svg>
                         </div>
+                    ))}
+
+                    <div className="absolute top-[calc(100%+8px)] left-1/2 flex -translate-x-1/2 items-center gap-2">
+                        <DockButton
+                            label="Close video"
+                            onClick={closeVideo}
+                            className={controlPointerEvents}
+                        >
+                            <X className="size-4" />
+                        </DockButton>
+                        <div
+                            onPointerDown={startDrag}
+                            onPointerMove={move}
+                            onPointerUp={endInteraction}
+                            onPointerCancel={endInteraction}
+                            onLostPointerCapture={endInteraction}
+                            aria-hidden
+                            className={cn(
+                                'group/grabber flex h-8 w-32 touch-none items-center justify-center select-none',
+                                isInteracting
+                                    ? 'cursor-grabbing'
+                                    : 'cursor-grab',
+                                controlPointerEvents,
+                            )}
+                            data-test="video-dock-handle"
+                        >
+                            <span className="h-2 w-28 rounded-full bg-white/90 shadow-[0_0_0_1px_rgb(0_0_0/0.15),0_2px_8px_rgb(0_0_0/0.35)] transition-[width,background-color] duration-200 group-hover/grabber:w-32 group-hover/grabber:bg-white" />
+                        </div>
+                        <DockButton
+                            label="Back to video"
+                            onClick={goBack}
+                            className={controlPointerEvents}
+                        >
+                            <Maximize2 className="size-4" />
+                        </DockButton>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -721,10 +766,12 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
 function DockButton({
     label,
     onClick,
+    className,
     children,
 }: {
     label: string;
     onClick: () => void;
+    className?: string;
     children: ReactNode;
 }) {
     return (
@@ -734,7 +781,10 @@ function DockButton({
             title={label}
             onClick={onClick}
             onPointerDown={(event) => event.stopPropagation()}
-            className="relative flex size-8 cursor-pointer items-center justify-center rounded-full text-white transition-colors hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+            className={cn(
+                'flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white shadow-[0_2px_8px_rgb(0_0_0/0.35)] ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-black/80 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none',
+                className,
+            )}
         >
             {children}
         </button>

@@ -21,13 +21,19 @@ Object.defineProperty(globalThis, 'window', {
 });
 
 const { LinkEmbed } = await import('../../resources/js/components/link-embed');
+const { TooltipProvider } = await import(
+    '../../resources/js/components/ui/tooltip'
+);
 const {
     closeVideo,
     dockedVideo,
     playVideo,
     playVideoHere,
+    popOutVideo,
     registerVideoSlot,
+    setVideoFloating,
     takeClaimedSlot,
+    takePopOutRequest,
     videoSlot,
 } = await import('../../resources/js/lib/video-dock');
 
@@ -57,11 +63,14 @@ const slot = (isConnected = true) => ({ isConnected }) as HTMLElement;
 
 const render = (shown: Embed, isStatic = false) =>
     renderToStaticMarkup(
-        <LinkEmbed preview={preview} embed={shown} isStatic={isStatic} />,
+        <TooltipProvider>
+            <LinkEmbed preview={preview} embed={shown} isStatic={isStatic} />
+        </TooltipProvider>,
     );
 
 beforeEach(() => {
     closeVideo();
+    setVideoFloating(false);
     location.pathname = '/';
     location.search = '';
 });
@@ -184,4 +193,40 @@ test('skips an embed that is no longer on the page', () => {
     assert.equal(videoSlot(embed.src), null);
 
     unregister();
+});
+
+test('offers picture-in-picture under a video playing in its embed', () => {
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+
+    assert.ok(render(embed).includes('data-test="link-embed-pop-out"'));
+    assert.ok(!render(other).includes('data-test="link-embed-pop-out"'));
+});
+
+test('stops offering picture-in-picture once the video floats', () => {
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+    setVideoFloating(true);
+
+    assert.ok(!render(embed).includes('data-test="link-embed-pop-out"'));
+});
+
+test('asks the player to pop out once', () => {
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+    popOutVideo();
+
+    assert.equal(takePopOutRequest(), true);
+    assert.equal(takePopOutRequest(), false);
+});
+
+test('ignores popping out when nothing is playing', () => {
+    popOutVideo();
+
+    assert.equal(takePopOutRequest(), false);
+});
+
+test('a new video drops a pop out asked for the previous one', () => {
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+    popOutVideo();
+    playVideo({ src: other.src, title: 'Second', aspectRatio: 16 / 9 });
+
+    assert.equal(takePopOutRequest(), false);
 });

@@ -19,6 +19,8 @@ const listeners = new Set<() => void>();
 const slots: { src: string; element: HTMLElement }[] = [];
 let video: DockedVideo | null = null;
 let claimedSlot: HTMLElement | null = null;
+let isFloating = false;
+let isPopOutRequested = false;
 
 function notify(): void {
     listeners.forEach((listener) => listener());
@@ -40,13 +42,50 @@ export function currentPageUrl(): string {
 export function playVideo(next: Omit<DockedVideo, 'pageUrl'>): void {
     video = { ...next, pageUrl: currentPageUrl() };
     claimedSlot = null;
+    isPopOutRequested = false;
     notify();
 }
 
 export function closeVideo(): void {
     video = null;
     claimedSlot = null;
+    isPopOutRequested = false;
     notify();
+}
+
+/**
+ * Sends the video playing in its embed to the corner of the screen, without leaving the page.
+ */
+export function popOutVideo(): void {
+    if (video === null) {
+        return;
+    }
+
+    isPopOutRequested = true;
+    notify();
+}
+
+export function takePopOutRequest(): boolean {
+    const isRequested = isPopOutRequested;
+
+    isPopOutRequested = false;
+
+    return isRequested;
+}
+
+export function setVideoFloating(next: boolean): void {
+    if (isFloating !== next) {
+        isFloating = next;
+        notify();
+    }
+}
+
+export function useIsVideoFloating(): boolean {
+    return useSyncExternalStore(
+        subscribe,
+        () => isFloating,
+        () => false,
+    );
 }
 
 /**
