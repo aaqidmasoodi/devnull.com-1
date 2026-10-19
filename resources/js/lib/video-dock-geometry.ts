@@ -17,6 +17,27 @@ export type Obstacle = { left: number; right: number; top: number };
 export type DockPlacement = { corner: Corner; length: number };
 
 /**
+ * A header stuck to the top of the page. The page scrolls beneath it, so it is where the visible page begins, and the
+ * player rests below it.
+ */
+export type Ceiling = { left: number; right: number; bottom: number };
+
+export const ceilingGap = 16;
+
+/**
+ * How far down the visible page starts above a horizontal span: below the lowest header stuck over it.
+ */
+export function ceilingOver(
+    left: number,
+    right: number,
+    ceilings: Ceiling[],
+): number {
+    return ceilings
+        .filter((ceiling) => ceiling.left < right && ceiling.right > left)
+        .reduce((top, ceiling) => Math.max(top, ceiling.bottom), 0);
+}
+
+/**
  * The resize handles curve around the player's corners from just outside it, and the grabber hangs below it, so the
  * player keeps clear of the screen's edges by enough to leave them room.
  */
@@ -81,13 +102,20 @@ export function cornerBox(
     size: Size,
     viewport: Size,
     obstacles: Obstacle[] = [],
+    ceilings: Ceiling[] = [],
 ): Box {
     const x = corner.endsWith('left')
         ? dockMargin
         : viewport.width - dockMargin - size.width;
 
     if (corner.startsWith('top')) {
-        return { x, y: dockMargin, ...size };
+        const ceiling = ceilingOver(x, x + size.width, ceilings);
+
+        return {
+            x,
+            y: ceiling > 0 ? ceiling + ceilingGap : dockMargin,
+            ...size,
+        };
     }
 
     const floor = obstacles
@@ -194,23 +222,28 @@ export function afterEmbedLeft(
 
 /**
  * Where a video scrolled past sets off from: no further out than the sliver of it last seen at the edge it left by, so
- * it slides back in from that edge, rather than from somewhere well out of sight.
+ * it slides back in from that edge, rather than from somewhere well out of sight. Under a header, that edge is the
+ * header's bottom.
  */
-export function departureBox(rect: Box, viewport: Size): Box {
+export function departureBox(rect: Box, viewport: Size, top = 0): Box {
     const sliver = rect.height * popOutBelow;
 
     return {
         ...rect,
         y: Math.min(
-            Math.max(rect.y, sliver - rect.height),
+            Math.max(rect.y, top + sliver - rect.height),
             viewport.height - sliver,
         ),
     };
 }
 
+/**
+ * How much of an embed shows, counting what is under a header stuck above it as hidden.
+ */
 export function visibleFraction(
     rect: { top: number; height: number },
     viewport: Size,
+    top = 0,
 ): number {
     if (rect.height <= 0) {
         return 0;
@@ -218,7 +251,7 @@ export function visibleFraction(
 
     const visible =
         Math.min(rect.top + rect.height, viewport.height) -
-        Math.max(rect.top, 0);
+        Math.max(rect.top, top);
 
     return Math.max(0, visible) / rect.height;
 }

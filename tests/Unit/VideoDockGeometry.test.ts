@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     afterEmbedLeft,
+    ceilingGap,
+    ceilingOver,
     compactBelow,
     defaultDockCorner,
     departureBox,
@@ -296,4 +298,43 @@ await test('a video still in view sets off from where it is', () => {
     const rect = { x: 200, y: 300, width: 600, height: 400 };
 
     assert.deepEqual(departureBox(rect, desktop), rect);
+});
+
+const header = { left: 400, right: 1100, bottom: 60 };
+
+await test('finds the header stuck over a stretch of the page', () => {
+    assert.equal(ceilingOver(500, 900, [header]), 60);
+    assert.equal(ceilingOver(1150, 1400, [header]), 0);
+    assert.equal(ceilingOver(500, 900, []), 0);
+    assert.equal(
+        ceilingOver(500, 900, [header, { left: 0, right: 1440, bottom: 90 }]),
+        90,
+    );
+});
+
+await test('rests below a header stuck over its top corner', () => {
+    const size = { width: 300, height: 169 };
+    const phoneHeader = { left: 0, right: phone.width, bottom: 56 };
+
+    assert.equal(
+        cornerBox('top-right', size, phone, [], [phoneHeader]).y,
+        56 + ceilingGap,
+    );
+    assert.equal(cornerBox('top-right', size, desktop, [], [header]).y, 24);
+});
+
+await test('counts what has scrolled under a header as out of view', () => {
+    assert.equal(visibleFraction({ top: 0, height: 200 }, desktop, 60), 0.7);
+    assert.equal(visibleFraction({ top: -100, height: 200 }, desktop, 60), 0.2);
+    assert.equal(visibleFraction({ top: 100, height: 200 }, desktop, 60), 1);
+});
+
+await test('a video scrolled under a header slides back out from beneath it', () => {
+    const box = departureBox(
+        { x: 420, y: -900, width: 600, height: 400 },
+        desktop,
+        60,
+    );
+
+    assert.equal(box.y + box.height, 60 + 400 * popOutBelow);
 });

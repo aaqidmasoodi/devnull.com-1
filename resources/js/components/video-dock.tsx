@@ -22,6 +22,7 @@ import {
     afterEmbedLeft,
     closeAction,
     returnsByItself,
+    ceilingOver,
     cornerBox,
     departureBox,
     dockSize,
@@ -38,6 +39,7 @@ import {
 } from '@/lib/video-dock-geometry';
 import type {
     Box,
+    Ceiling,
     Corner,
     DockPlacement,
     Obstacle,
@@ -126,6 +128,31 @@ function obstacles(): Obstacle[] {
         .map((element) => element.getBoundingClientRect())
         .filter((rect) => rect.width > 0 && rect.height > 0)
         .map(({ left, right, top }) => ({ left, right, top }));
+}
+
+/**
+ * The headers stuck to the top of the page right now. Every page keeps its own sticky header in the main column, so
+ * they are found as they stand rather than each being marked.
+ */
+function ceilings(): Ceiling[] {
+    return Array.from(
+        document.querySelectorAll<HTMLElement>('[data-main] .sticky'),
+    )
+        .filter((element) => getComputedStyle(element).position === 'sticky')
+        .map((element) => element.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0 && rect.top <= 1)
+        .map(({ left, right, bottom }) => ({ left, right, bottom }));
+}
+
+function ceilingAbove(box: Box): number {
+    return ceilingOver(box.x, box.x + box.width, ceilings());
+}
+
+/**
+ * How much of an embed the reader can see, leaving out what has scrolled under a header.
+ */
+function shownFraction(rect: DOMRect): number {
+    return visibleFraction(rect, viewport(), ceilingAbove(toBox(rect)));
 }
 
 function prefersReducedMotion(): boolean {
@@ -268,6 +295,16 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     };
 
     /**
+     * Emerging from under a header, the player stays beneath the headers until it is clear of them, then rises above
+     * the page. In its embed it sits beneath them anyway.
+     */
+    const layerUnderHeaders = (isUnder: boolean) => {
+        if (wrapper.current !== null) {
+            wrapper.current.style.zIndex = isUnder ? '1' : '';
+        }
+    };
+
+    /**
      * Pins the player to the viewport where the embed is now, so it can fly off from there.
      */
     const lift = () => {
@@ -294,6 +331,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             dockSize(placement.length, video.aspectRatio, viewport()),
             viewport(),
             obstacles(),
+            ceilings(),
         );
     };
 
@@ -312,6 +350,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         }
 
         place('absolute', documentBox(slot));
+        layerUnderHeaders(false);
         setIsFloating(false);
     };
 
@@ -338,8 +377,12 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         const current = state();
 
         if (current.stage === 'inline') {
-            place('fixed', departureBox(current.lastSlotRect, viewport()));
+            const top = ceilingAbove(current.lastSlotRect);
+
+            place('fixed', departureBox(current.lastSlotRect, viewport(), top));
             current.velocity = restingVelocity;
+            // It left by going under a header, so it comes back out from under it too.
+            layerUnderHeaders(current.lastSlotRect.y < top);
         }
 
         current.stage = 'to-corner';
@@ -386,7 +429,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         const current = state();
         const isAway =
             current.isAutomatic &&
-            visibleFraction(rect, viewport()) < popOutBelow &&
+            shownFraction(rect) < popOutBelow &&
             current.playback !== 'paused';
 
         if (!isAway) {
@@ -412,9 +455,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         const current = state();
         const slot = homeSlot();
         const fraction =
-            slot === null
-                ? null
-                : visibleFraction(slot.getBoundingClientRect(), viewport());
+            slot === null ? null : shownFraction(slot.getBoundingClientRect());
 
         if (slot === null || closeAction(fraction) === 'stop') {
             closeVideo();
@@ -528,8 +569,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                     current.wasPoppedOutByHand,
                 ) &&
                 slot !== null &&
-                visibleFraction(slot.getBoundingClientRect(), viewport()) >=
-                    returnAbove
+                shownFraction(slot.getBoundingClientRect()) >= returnAbove
                     ? slot
                     : null;
 
@@ -591,7 +631,16 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 return;
             }
 
-            if (chase(target, seconds)) {
+            const hasArrived = chase(target, seconds);
+
+            if (
+                current.box.y >= ceilingAbove(current.box) - 0.5 ||
+                hasArrived
+            ) {
+                layerUnderHeaders(false);
+            }
+
+            if (hasArrived) {
                 current.stage = 'floating';
             }
         };
