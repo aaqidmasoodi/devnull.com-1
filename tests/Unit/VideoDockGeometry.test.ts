@@ -19,6 +19,7 @@ import {
     visibleFraction,
     resizedLength,
     restingVelocity,
+    returnsByItself,
     stepSpring,
 } from '../../resources/js/lib/video-dock-geometry.ts';
 
@@ -228,15 +229,27 @@ await test('is not at rest while it is still moving', () => {
     );
 });
 
-await test('closing hands the video back to an embed still on screen', () => {
-    assert.equal(closeAction(1), 'return');
-    assert.equal(closeAction(popOutBelow), 'return');
+await test('closing hands a video that floated by itself back to an embed still on screen', () => {
+    assert.equal(closeAction(1, false), 'return');
+    assert.equal(closeAction(popOutBelow, false), 'return');
 });
 
 await test('closing stops a video whose embed is scrolled away or gone', () => {
-    assert.equal(closeAction(popOutBelow - 0.01), 'stop');
-    assert.equal(closeAction(0), 'stop');
-    assert.equal(closeAction(null), 'stop');
+    assert.equal(closeAction(popOutBelow - 0.01, false), 'stop');
+    assert.equal(closeAction(0, false), 'stop');
+    assert.equal(closeAction(null, false), 'stop');
+});
+
+await test('closing stops a video popped out by hand, even with its embed on screen', () => {
+    assert.equal(closeAction(1, true), 'stop');
+    assert.equal(closeAction(null, true), 'stop');
+});
+
+await test('only a video that floated by itself comes back by itself', () => {
+    assert.equal(returnsByItself(true, false), true);
+    assert.equal(returnsByItself(true, true), false);
+    assert.equal(returnsByItself(false, false), false);
+    assert.equal(returnsByItself(false, true), false);
 });
 
 await test('floats on when its embed leaves while picture-in-picture is automatic', () => {

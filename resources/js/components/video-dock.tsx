@@ -21,6 +21,7 @@ import type { DockedVideo } from '@/lib/video-dock';
 import {
     afterEmbedLeft,
     closeAction,
+    returnsByItself,
     cornerBox,
     dockSize,
     isSpringSettled,
@@ -103,7 +104,7 @@ type Controller = {
     lastFrame: number;
     placement: DockPlacement;
     interaction: Interaction | null;
-    returnBlockedOn: string | null;
+    wasPoppedOutByHand: boolean;
     hiddenSince: number | null;
     playback: Playback;
     isAutomatic: boolean;
@@ -239,7 +240,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 lastFrame: performance.now(),
                 placement: readDockPlacement(viewport()),
                 interaction: null,
-                returnBlockedOn: null,
+                wasPoppedOutByHand: false,
                 hiddenSince: null,
                 playback: 'unknown',
                 isAutomatic: autoPictureInPicture,
@@ -405,13 +406,15 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 ? null
                 : visibleFraction(slot.getBoundingClientRect(), viewport());
 
-        if (slot === null || closeAction(fraction) === 'stop') {
+        if (
+            slot === null ||
+            closeAction(fraction, current.wasPoppedOutByHand) === 'stop'
+        ) {
             closeVideo();
 
             return;
         }
 
-        current.returnBlockedOn = null;
         flyInto(slot);
     };
 
@@ -436,7 +439,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             const claimed = takeClaimedSlot();
 
             if (claimed !== null) {
-                current.returnBlockedOn = null;
+                current.wasPoppedOutByHand = false;
 
                 if (current.stage === 'pending') {
                     attach(claimed);
@@ -453,9 +456,9 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             if (current.stage === 'inline') {
                 const slot = current.slot;
 
-                // Popped out by hand, it stays out on this page until asked back, rather than flying straight home.
+                // Popped out by hand, it stays out on every page until Play here asks it back, and closing it ends it.
                 if (takePopOutRequest() && slot !== null && slot.isConnected) {
-                    current.returnBlockedOn = currentPageUrl();
+                    current.wasPoppedOutByHand = true;
                     flyToCorner();
 
                     return;
@@ -526,17 +529,12 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 return;
             }
 
-            if (
-                current.returnBlockedOn !== null &&
-                current.returnBlockedOn !== currentPageUrl()
-            ) {
-                current.returnBlockedOn = null;
-            }
-
-            const slot = current.returnBlockedOn === null ? homeSlot() : null;
-            // Brought back by hand, or by closing it, rather than by itself, unless picture-in-picture is automatic.
+            const slot = homeSlot();
             const visibleSlot =
-                current.isAutomatic &&
+                returnsByItself(
+                    current.isAutomatic,
+                    current.wasPoppedOutByHand,
+                ) &&
                 slot !== null &&
                 visibleFraction(slot.getBoundingClientRect(), viewport()) >=
                     returnAbove
