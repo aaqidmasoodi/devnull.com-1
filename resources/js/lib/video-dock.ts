@@ -33,6 +33,7 @@ let video: DockedVideo | null = null;
 let playedFrom: Element | null = null;
 let claimedSlot: HTMLElement | null = null;
 let heldSlot: Slot | null = null;
+let isFloating = false;
 let isPopOutRequested = false;
 let playingInPlace: string | null = null;
 
@@ -62,6 +63,7 @@ export function playVideo(
     playedFrom = from;
     claimedSlot = null;
     heldSlot = null;
+    isFloating = false;
     isPopOutRequested = false;
     playingInPlace = null;
     notify();
@@ -72,6 +74,7 @@ export function closeVideo(): void {
     playedFrom = null;
     claimedSlot = null;
     heldSlot = null;
+    isFloating = false;
     isPopOutRequested = false;
     notify();
 }
@@ -140,6 +143,29 @@ export function setHeldSlot(element: HTMLElement | null): void {
         heldSlot = next;
         notify();
     }
+}
+
+/**
+ * Whether the player floats in a corner. Only then is the video somewhere else for its embeds to point to: while it
+ * is on its way into an embed, or about to appear in one, they simply show the video's poster.
+ */
+export function setVideoFloating(next: boolean): void {
+    if (isFloating !== next) {
+        isFloating = next;
+        notify();
+    }
+}
+
+export function isVideoFloating(): boolean {
+    return isFloating;
+}
+
+export function useIsVideoFloating(): boolean {
+    return useSyncExternalStore(
+        subscribeToVideoDock,
+        isVideoFloating,
+        () => false,
+    );
 }
 
 export function heldSlotOwner(): string | null {

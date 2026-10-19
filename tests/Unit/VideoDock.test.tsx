@@ -51,6 +51,7 @@ const {
     readDockPlacement,
     registerVideoSlot,
     setHeldSlot,
+    setVideoFloating,
     takeClaimedSlot,
     takePlayedFrom,
     takePopOutRequest,
@@ -152,8 +153,28 @@ test('remembers which embed it was played from, once', () => {
     assert.equal(takePlayedFrom(), null);
 });
 
-test('shows where the video is playing in every embed of it', () => {
+test('shows only the poster while the player is about to appear in the embed', () => {
     playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+
+    const markup = render(embed);
+
+    assert.ok(markup.includes('data-test="link-embed-slot"'));
+    assert.ok(!markup.includes('Playing in picture-in-picture'));
+    assert.ok(!markup.includes('data-test="link-embed-play-here"'));
+    assert.ok(markup.includes('src="https://i.ytimg.com/vi/first/hqdefault.jpg"'));
+});
+
+test('a new video starts out not floating, whatever the last one did', () => {
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+    setVideoFloating(true);
+    playVideo({ src: other.src, title: 'Second', aspectRatio: 16 / 9 });
+
+    assert.ok(!render(other).includes('Playing in picture-in-picture'));
+});
+
+test('shows where the video is playing in every embed of it while it floats', () => {
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+    setVideoFloating(true);
 
     const markup = render(embed);
 

@@ -13,6 +13,7 @@ import {
     useDockedVideo,
     useHeldSlotOwner,
     useIsPlayingInPlace,
+    useIsVideoFloating,
 } from '@/lib/video-dock';
 import { parseAspectRatio } from '@/lib/video-dock-geometry';
 import type { Embed, LinkPreview } from '@/types';
@@ -87,8 +88,9 @@ export function EmbedFrame({
 
 /**
  * Where a playing video sits in the post. The player itself lives in the layout and is laid over this slot, so it keeps
- * playing in a corner of the screen once the post is gone. While it plays elsewhere, the slot says so and offers to bring
- * it back; while the player sits on it, the slot keeps quiet, so nothing hidden under the video is read out or focused.
+ * playing in a corner of the screen once the post is gone. While it floats, the slot says so and offers to bring it back.
+ * Otherwise, while the player sits on it, flies in or is about to appear, the slot only shows the poster, so nothing is
+ * read out, focused or glimpsed behind the video.
  */
 function VideoSlot({
     embed,
@@ -102,6 +104,7 @@ function VideoSlot({
     isHeld: boolean;
 }) {
     const [element, setElement] = useState<HTMLDivElement | null>(null);
+    const isElsewhere = useIsVideoFloating() && !isHeld;
     const register = useCallback(
         (node: HTMLDivElement | null) => {
             if (node === null) {
@@ -122,7 +125,13 @@ function VideoSlot({
             className="relative block w-full overflow-hidden"
             data-test="link-embed-slot"
         >
-            {!isHeld && (
+            {!isElsewhere && !isHeld && (
+                <Thumbnail
+                    src={poster}
+                    className="absolute inset-0 size-full"
+                />
+            )}
+            {isElsewhere && (
                 <>
                     <Thumbnail
                         src={poster}

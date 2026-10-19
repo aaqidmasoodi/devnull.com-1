@@ -6,6 +6,7 @@ import {
     dockedVideo,
     readDockPlacement,
     setHeldSlot,
+    setVideoFloating,
     subscribeToVideoDock,
     takeClaimedSlot,
     takePlayedFrom,
@@ -119,8 +120,16 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
     const [src] = useState(() =>
         playerApiSrc(video.src, window.location.origin),
     );
-    const [isFloating, setIsFloating] = useState(false);
+    const [isFloating, setIsFloatingState] = useState(false);
     const [isInteracting, setIsInteracting] = useState(false);
+
+    /**
+     * The embeds hear it at once, in the same frame the player starts moving, so none of them shows the wrong card.
+     */
+    const setIsFloating = (next: boolean) => {
+        setIsFloatingState(next);
+        setVideoFloating(next);
+    };
 
     const state = (): Controller => {
         if (controller.current === null) {
