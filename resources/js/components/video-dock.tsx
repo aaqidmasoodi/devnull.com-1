@@ -23,6 +23,7 @@ import {
     closeAction,
     returnsByItself,
     cornerBox,
+    departureBox,
     dockSize,
     isCompact,
     isSpringSettled,
@@ -100,7 +101,6 @@ type Controller = {
     candidateSince: number;
     box: Box;
     lastSlotRect: Box;
-    slotVelocity: Box;
     velocity: Box;
     lastFrame: number;
     placement: DockPlacement;
@@ -237,7 +237,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 candidateSince: 0,
                 box: { x: 0, y: 0, width: 0, height: 0 },
                 lastSlotRect: { x: 0, y: 0, width: 0, height: 0 },
-                slotVelocity: restingVelocity,
                 velocity: restingVelocity,
                 lastFrame: performance.now(),
                 placement: readDockPlacement(viewport()),
@@ -306,7 +305,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         current.candidate = null;
         current.hiddenSince = null;
         current.velocity = restingVelocity;
-        current.slotVelocity = restingVelocity;
         current.lastSlotRect = toBox(slot.getBoundingClientRect());
 
         if (surface.current !== null) {
@@ -333,14 +331,15 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     };
 
     /**
-     * Leaving an embed that is scrolling, the player sets off at the embed's speed, so it peels away rather than stops.
+     * Leaving its embed, the player sets off from the edge of the screen the embed left by, at rest, so it reads as the
+     * same video sliding back into view rather than one arriving from out of sight.
      */
     const flyToCorner = () => {
         const current = state();
 
         if (current.stage === 'inline') {
-            lift();
-            current.velocity = current.slotVelocity;
+            place('fixed', departureBox(current.lastSlotRect, viewport()));
+            current.velocity = restingVelocity;
         }
 
         current.stage = 'to-corner';
@@ -476,22 +475,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 if (slot !== null && slot.isConnected) {
                     const rect = slot.getBoundingClientRect();
                     const box = documentBox(slot);
-                    const viewportBox = toBox(rect);
-
-                    if (seconds > 0) {
-                        current.slotVelocity = {
-                            x:
-                                (viewportBox.x - current.lastSlotRect.x) /
-                                seconds,
-                            y:
-                                (viewportBox.y - current.lastSlotRect.y) /
-                                seconds,
-                            width: 0,
-                            height: 0,
-                        };
-                    }
-
-                    current.lastSlotRect = viewportBox;
+                    current.lastSlotRect = toBox(rect);
 
                     if (!isSameBox(box, current.box)) {
                         place('absolute', box);
@@ -506,7 +490,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
 
                 lift();
                 current.slot = null;
-                current.slotVelocity = restingVelocity;
                 current.stage = 'holding';
                 current.since = now;
             }

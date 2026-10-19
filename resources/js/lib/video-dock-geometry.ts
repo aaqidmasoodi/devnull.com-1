@@ -192,6 +192,22 @@ export function afterEmbedLeft(
     return hasHomeEmbed ? 'return' : 'stop';
 }
 
+/**
+ * Where a video scrolled past sets off from: no further out than the sliver of it last seen at the edge it left by, so
+ * it slides back in from that edge, rather than from somewhere well out of sight.
+ */
+export function departureBox(rect: Box, viewport: Size): Box {
+    const sliver = rect.height * popOutBelow;
+
+    return {
+        ...rect,
+        y: Math.min(
+            Math.max(rect.y, sliver - rect.height),
+            viewport.height - sliver,
+        ),
+    };
+}
+
 export function visibleFraction(
     rect: { top: number; height: number },
     viewport: Size,

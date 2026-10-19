@@ -4,6 +4,7 @@ import {
     afterEmbedLeft,
     compactBelow,
     defaultDockCorner,
+    departureBox,
     isCompact,
     closeAction,
     cornerBox,
@@ -270,4 +271,29 @@ await test('starts in the bottom right on a wide screen', () => {
     assert.ok(!isCompact(desktop));
     assert.equal(defaultDockCorner(desktop), 'bottom-right');
     assert.equal(defaultDockCorner({ width: compactBelow, height: 900 }), 'bottom-right');
+});
+
+await test('a video scrolled past the top slides back in from the top edge', () => {
+    const box = departureBox(
+        { x: 200, y: -900, width: 600, height: 400 },
+        desktop,
+    );
+
+    assert.deepEqual(box, { x: 200, y: -300, width: 600, height: 400 });
+    assert.equal(box.y + box.height, 400 * popOutBelow);
+});
+
+await test('a video scrolled past the bottom slides back in from the bottom edge', () => {
+    const box = departureBox(
+        { x: 200, y: 2000, width: 600, height: 400 },
+        desktop,
+    );
+
+    assert.equal(box.y, desktop.height - 400 * popOutBelow);
+});
+
+await test('a video still in view sets off from where it is', () => {
+    const rect = { x: 200, y: 300, width: 600, height: 400 };
+
+    assert.deepEqual(departureBox(rect, desktop), rect);
 });
