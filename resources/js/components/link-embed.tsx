@@ -1,16 +1,18 @@
 import { AudioLines, Code2, PictureInPicture2, Play } from 'lucide-react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { ActionTooltip } from '@/components/action-tooltip';
 import { cn } from '@/lib/utils';
 import {
     canPlayFloating,
+    playInPlace,
     playVideo,
     playVideoHere,
     popOutVideo,
     registerVideoSlot,
     useDockedVideo,
-    useIsVideoFloating,
+    useHeldSlotOwner,
+    useIsPlayingInPlace,
 } from '@/lib/video-dock';
 import { parseAspectRatio } from '@/lib/video-dock-geometry';
 import type { Embed, LinkPreview } from '@/types';
@@ -85,16 +87,32 @@ export function EmbedFrame({
 
 /**
  * Where a playing video sits in the post. The player itself lives in the layout and is laid over this slot, so it keeps
- * playing in a corner of the screen once the post is gone. While it plays there, the slot says so and offers to bring it
- * back.
+ * playing in a corner of the screen once the post is gone. While it plays elsewhere, the slot says so and offers to bring
+ * it back; while the player sits on it, the slot keeps quiet, so nothing hidden under the video is read out or focused.
  */
-function VideoSlot({ embed, poster }: { embed: Embed; poster: string | null }) {
+function VideoSlot({
+    embed,
+    poster,
+    owner,
+    isHeld,
+}: {
+    embed: Embed;
+    poster: string | null;
+    owner: string;
+    isHeld: boolean;
+}) {
+    const [element, setElement] = useState<HTMLDivElement | null>(null);
     const register = useCallback(
-        (element: HTMLDivElement | null) =>
-            element === null
-                ? undefined
-                : registerVideoSlot(embed.src, element),
-        [embed.src],
+        (node: HTMLDivElement | null) => {
+            if (node === null) {
+                return;
+            }
+
+            setElement(node);
+
+            return registerVideoSlot(embed.src, node, owner);
+        },
+        [embed.src, owner],
     );
 
     return (
@@ -104,33 +122,37 @@ function VideoSlot({ embed, poster }: { embed: Embed; poster: string | null }) {
             className="relative block w-full overflow-hidden"
             data-test="link-embed-slot"
         >
-            <Thumbnail
-                src={poster}
-                className="absolute inset-0 size-full scale-110 opacity-50 blur-md"
-            />
-            <span className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 p-4 text-center text-white">
-                <PictureInPicture2 aria-hidden className="size-7 opacity-80" />
-                <span className="text-sm font-medium">
-                    Playing in picture-in-picture
-                </span>
-                <button
-                    type="button"
-                    onClick={(event) => {
-                        const slot = event.currentTarget.closest<HTMLElement>(
-                            '[data-test="link-embed-slot"]',
-                        );
-
-                        if (slot !== null) {
-                            playVideoHere(slot);
-                        }
-                    }}
-                    className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-sm font-medium ring-1 ring-white/25 backdrop-blur-sm transition-colors hover:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
-                    data-test="link-embed-play-here"
-                >
-                    <Play aria-hidden className="size-3.5 fill-current" />
-                    Play here
-                </button>
-            </span>
+            {!isHeld && (
+                <>
+                    <Thumbnail
+                        src={poster}
+                        className="absolute inset-0 size-full scale-110 opacity-50 blur-md"
+                    />
+                    <span className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 p-4 text-center text-white">
+                        <PictureInPicture2
+                            aria-hidden
+                            className="size-7 opacity-80"
+                        />
+                        <span className="text-sm font-medium">
+                            Playing in picture-in-picture
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() =>
+                                element !== null && playVideoHere(element)
+                            }
+                            className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-sm font-medium ring-1 ring-white/25 backdrop-blur-sm transition-colors hover:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+                            data-test="link-embed-play-here"
+                        >
+                            <Play
+                                aria-hidden
+                                className="size-3.5 fill-current"
+                            />
+                            Play here
+                        </button>
+                    </span>
+                </>
+            )}
         </div>
     );
 }
@@ -199,15 +221,17 @@ export function LinkEmbed({
     embed: Embed;
     isStatic?: boolean;
 }) {
+    const owner = useId();
+    const container = useRef<HTMLDivElement | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [canFloat, setCanFloat] = useState(true);
-    const measure = useCallback(
-        (element: HTMLDivElement | null) =>
-            setCanFloat(element === null || canPlayFloating(element)),
-        [],
-    );
+    const measure = useCallback((element: HTMLDivElement | null) => {
+        container.current = element;
+        setCanFloat(element === null || canPlayFloating(element));
+    }, []);
     const dockedVideo = useDockedVideo();
-    const isVideoFloating = useIsVideoFloating();
+    const isPlayingInPlace = useIsPlayingInPlace(owner);
+    const isHeldHere = useHeldSlotOwner() === owner;
     const Icon = icons[embed.kind];
     const label = `Play ${preview.title ?? preview.url} from ${embed.provider}`;
     const isVideo = embed.aspect_ratio !== null;
@@ -215,14 +239,18 @@ export function LinkEmbed({
     const title = preview.title ?? `${embed.provider} player`;
     const aspectRatio = parseAspectRatio(embed.aspect_ratio);
     const isDocked = !isStatic && canFloat && dockedVideo?.src === embed.src;
-    const play = () =>
-        aspectRatio === null || !canFloat
-            ? setIsPlaying(true)
-            : playVideo({
-                  src: embed.src,
-                  title,
-                  aspectRatio,
-              });
+    const play = () => {
+        if (!isVideo) {
+            setIsPlaying(true);
+        } else if (aspectRatio === null || !canFloat) {
+            playInPlace(owner);
+        } else {
+            playVideo(
+                { src: embed.src, title, aspectRatio },
+                container.current,
+            );
+        }
+    };
 
     const frame = (
         <EmbedFrame src={embed.src} title={title} style={frameStyle(embed)} />
@@ -244,10 +272,15 @@ export function LinkEmbed({
                             isTall(embed) && 'max-w-[min(100%,20rem)]',
                         )}
                     >
-                        {isPlaying ? (
+                        {isPlayingInPlace ? (
                             frame
                         ) : isDocked ? (
-                            <VideoSlot embed={embed} poster={poster} />
+                            <VideoSlot
+                                embed={embed}
+                                poster={poster}
+                                owner={owner}
+                                isHeld={isHeldHere}
+                            />
                         ) : (
                             <PlayTrigger
                                 isStatic={isStatic}
@@ -281,7 +314,7 @@ export function LinkEmbed({
                             >
                                 <Details preview={preview} embed={embed} />
                             </a>
-                            {isDocked && !isVideoFloating && (
+                            {isDocked && isHeldHere && (
                                 <span className="flex items-center pr-2 pl-1">
                                     <ActionTooltip label="Picture-in-picture">
                                         <button

@@ -14,6 +14,12 @@ vi.doMock('react', () => ({
 }));
 
 const location = { pathname: '/', search: '' };
+
+// The page order of embeds is read the way a browser reports it.
+Object.defineProperty(globalThis, 'Node', {
+    configurable: true,
+    value: { DOCUMENT_POSITION_FOLLOWING: 4 },
+});
 const stored = new Map<string, string>();
 
 Object.defineProperty(globalThis, 'window', {
@@ -36,13 +42,17 @@ const {
     canPlayFloating,
     closeVideo,
     dockedVideo,
+    heldSlotOwner,
+    isPlayingInPlace,
+    playInPlace,
     playVideo,
     playVideoHere,
     popOutVideo,
     readDockPlacement,
     registerVideoSlot,
-    setVideoFloating,
+    setHeldSlot,
     takeClaimedSlot,
+    takePlayedFrom,
     takePopOutRequest,
     videoSlot,
     writeDockPlacement,
@@ -70,7 +80,23 @@ const preview: LinkPreview = {
     is_pending: false,
 };
 
-const slot = (isConnected = true) => ({ isConnected }) as HTMLElement;
+let pageOrder = 0;
+
+/**
+ * An embed's element, placed after the ones made before it, and inside nothing unless a container says so.
+ */
+const slot = (isConnected = true, order = pageOrder++) =>
+    ({
+        isConnected,
+        order,
+        compareDocumentPosition: (other: { order: number }) =>
+            other.order > order ? 4 : 2,
+    }) as unknown as HTMLElement;
+
+const container = (...inside: HTMLElement[]) =>
+    ({
+        contains: (element: HTMLElement) => inside.includes(element),
+    }) as unknown as Element;
 
 const render = (shown: Embed, isStatic = false) =>
     renderToStaticMarkup(
@@ -82,7 +108,7 @@ const render = (shown: Embed, isStatic = false) =>
 beforeEach(() => {
     stored.clear();
     closeVideo();
-    setVideoFloating(false);
+    setHeldSlot(null);
     location.pathname = '/';
     location.search = '';
 });
@@ -104,8 +130,26 @@ test('hands the video to the player, which remembers the page it was played on',
         src: embed.src,
         title: 'Shipping on a Friday',
         aspectRatio: 16 / 9,
-        pageUrl: '/log?lane=latest',
+        pagePath: '/log',
     });
+});
+
+test('knows a page by its path, so a search narrowing its results keeps the video at home', () => {
+    location.pathname = '/search';
+    location.search = '?q=laravel';
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+    location.search = '?q=laravel+wayfinder';
+
+    assert.equal(dockedVideo()?.pagePath, location.pathname);
+});
+
+test('remembers which embed it was played from, once', () => {
+    const from = container();
+
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 }, from);
+
+    assert.equal(takePlayedFrom(), from);
+    assert.equal(takePlayedFrom(), null);
 });
 
 test('shows where the video is playing in every embed of it', () => {
@@ -151,7 +195,7 @@ test('playing here moves the video to this page and claims the embed once', () =
 
     playVideoHere(here);
 
-    assert.equal(dockedVideo()?.pageUrl, '/@nunomaduro');
+    assert.equal(dockedVideo()?.pagePath, '/@nunomaduro');
     assert.equal(takeClaimedSlot(), here);
     assert.equal(takeClaimedSlot(), null);
 });
@@ -182,9 +226,13 @@ test('goes back to the first embed of the video still on the page', () => {
     const first = slot();
     const second = slot();
     const elsewhere = slot();
-    const unregisterFirst = registerVideoSlot(embed.src, first);
-    const unregisterSecond = registerVideoSlot(embed.src, second);
-    const unregisterElsewhere = registerVideoSlot(other.src, elsewhere);
+    const unregisterSecond = registerVideoSlot(embed.src, second, 'second');
+    const unregisterFirst = registerVideoSlot(embed.src, first, 'first');
+    const unregisterElsewhere = registerVideoSlot(
+        other.src,
+        elsewhere,
+        'elsewhere',
+    );
 
     assert.equal(videoSlot(embed.src), first);
 
@@ -200,25 +248,75 @@ test('goes back to the first embed of the video still on the page', () => {
 
 test('skips an embed that is no longer on the page', () => {
     const gone = slot(false);
-    const unregister = registerVideoSlot(embed.src, gone);
+    const unregister = registerVideoSlot(embed.src, gone, 'gone');
 
     assert.equal(videoSlot(embed.src), null);
 
     unregister();
 });
 
-test('offers picture-in-picture under a video playing in its embed', () => {
+test('starts in the embed it was played from, even with the same video higher up the page', () => {
+    const higher = slot();
+    const clicked = slot();
+    const unregisterHigher = registerVideoSlot(embed.src, higher, 'higher');
+    const unregisterClicked = registerVideoSlot(embed.src, clicked, 'clicked');
+
+    assert.equal(videoSlot(embed.src, container(clicked)), clicked);
+    assert.equal(videoSlot(embed.src, container()), higher);
+
+    unregisterHigher();
+    unregisterClicked();
+});
+
+test('knows which embed the player sits in, until that embed leaves', () => {
+    const held = slot();
+    const unregister = registerVideoSlot(embed.src, held, 'post');
+
+    setHeldSlot(held);
+
+    assert.equal(heldSlotOwner(), 'post');
+
+    unregister();
+
+    assert.equal(heldSlotOwner(), null);
+});
+
+test('offers picture-in-picture only once the player sits in the embed', () => {
     playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
 
-    assert.ok(render(embed).includes('data-test="link-embed-pop-out"'));
+    assert.ok(!render(embed).includes('data-test="link-embed-pop-out"'));
     assert.ok(!render(other).includes('data-test="link-embed-pop-out"'));
 });
 
-test('stops offering picture-in-picture once the video floats', () => {
+test('playing here drops a pop out asked for before', () => {
     playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
-    setVideoFloating(true);
+    popOutVideo();
+    playVideoHere(slot());
 
-    assert.ok(!render(embed).includes('data-test="link-embed-pop-out"'));
+    assert.equal(takePopOutRequest(), false);
+});
+
+test('playing in place stops the floating video', () => {
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+    playInPlace('chat');
+
+    assert.equal(dockedVideo(), null);
+    assert.ok(isPlayingInPlace('chat'));
+});
+
+test('playing in place stops another video playing in place', () => {
+    playInPlace('chat');
+    playInPlace('photo viewer');
+
+    assert.ok(!isPlayingInPlace('chat'));
+    assert.ok(isPlayingInPlace('photo viewer'));
+});
+
+test('playing a video on the page stops one playing in place', () => {
+    playInPlace('chat');
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+
+    assert.ok(!isPlayingInPlace('chat'));
 });
 
 test('asks the player to pop out once', () => {

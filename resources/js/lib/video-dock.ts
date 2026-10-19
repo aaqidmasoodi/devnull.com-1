@@ -10,13 +10,16 @@ import type { Corner, DockPlacement, Size } from '@/lib/video-dock-geometry';
 /**
  * The video playing on the page. Its player lives in the layout, so it keeps playing while the user moves between
  * pages: over the embed it was started from while that embed is on the page, and floating in a corner while it is not.
+ * The page is told apart by its path alone, so a search narrowing its results keeps the video at home.
  */
 export type DockedVideo = {
     src: string;
     title: string;
     aspectRatio: number;
-    pageUrl: string;
+    pagePath: string;
 };
+
+type Slot = { src: string; element: HTMLElement; owner: string };
 
 /**
  * A phone and a wide screen each remember their own corner and size, so a player made large at a desk doesn't open
@@ -25,45 +28,87 @@ export type DockedVideo = {
 const storageKey = (viewport: Size): string =>
     isCompact(viewport) ? 'video-dock:compact' : 'video-dock';
 const listeners = new Set<() => void>();
-const slots: { src: string; element: HTMLElement }[] = [];
+const slots: Slot[] = [];
 let video: DockedVideo | null = null;
+let playedFrom: Element | null = null;
 let claimedSlot: HTMLElement | null = null;
-let isFloating = false;
+let heldSlot: Slot | null = null;
 let isPopOutRequested = false;
+let playingInPlace: string | null = null;
 
 function notify(): void {
     listeners.forEach((listener) => listener());
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeToVideoDock(listener: () => void): () => void {
     listeners.add(listener);
 
     return () => listeners.delete(listener);
 }
 
-export function currentPageUrl(): string {
-    return window.location.pathname + window.location.search;
+export function currentPagePath(): string {
+    return window.location.pathname;
 }
 
 /**
- * Starting a video replaces the one playing, wherever it is: one player keeps the page from talking over itself.
+ * Starting a video replaces the one playing, wherever it is: one player keeps the page from talking over itself. It
+ * starts in the embed it was played from, even when the same video is posted higher up the page too.
  */
-export function playVideo(next: Omit<DockedVideo, 'pageUrl'>): void {
-    video = { ...next, pageUrl: currentPageUrl() };
+export function playVideo(
+    next: Omit<DockedVideo, 'pagePath'>,
+    from: Element | null = null,
+): void {
+    video = { ...next, pagePath: currentPagePath() };
+    playedFrom = from;
     claimedSlot = null;
+    heldSlot = null;
     isPopOutRequested = false;
+    playingInPlace = null;
     notify();
 }
 
 export function closeVideo(): void {
     video = null;
+    playedFrom = null;
     claimedSlot = null;
+    heldSlot = null;
     isPopOutRequested = false;
     notify();
 }
 
 /**
- * Sends the video playing in its embed to the corner of the screen, without leaving the page.
+ * An embed that can't hand its video to the floating player, like one in a chat, plays it in place, and stops
+ * whichever video was playing before, floating or in place.
+ */
+export function playInPlace(owner: string): void {
+    closeVideo();
+    playingInPlace = owner;
+    notify();
+}
+
+export function isPlayingInPlace(owner: string): boolean {
+    return playingInPlace === owner;
+}
+
+export function useIsPlayingInPlace(owner: string): boolean {
+    return useSyncExternalStore(
+        subscribeToVideoDock,
+        () => isPlayingInPlace(owner),
+        () => false,
+    );
+}
+
+export function takePlayedFrom(): Element | null {
+    const from = playedFrom;
+
+    playedFrom = null;
+
+    return from;
+}
+
+/**
+ * Sends the video playing in its embed to the corner of the screen, without leaving the page. Asked for anywhere but
+ * in its embed, the request lapses rather than firing later.
  */
 export function popOutVideo(): void {
     if (video === null) {
@@ -82,18 +127,30 @@ export function takePopOutRequest(): boolean {
     return isRequested;
 }
 
-export function setVideoFloating(next: boolean): void {
-    if (isFloating !== next) {
-        isFloating = next;
+/**
+ * The embed the player sits in, if it sits in one, so that embed can stop describing the player as elsewhere.
+ */
+export function setHeldSlot(element: HTMLElement | null): void {
+    const next =
+        element === null
+            ? null
+            : (slots.find((slot) => slot.element === element) ?? null);
+
+    if (heldSlot !== next) {
+        heldSlot = next;
         notify();
     }
 }
 
-export function useIsVideoFloating(): boolean {
+export function heldSlotOwner(): string | null {
+    return heldSlot?.owner ?? null;
+}
+
+export function useHeldSlotOwner(): string | null {
     return useSyncExternalStore(
-        subscribe,
-        () => isFloating,
-        () => false,
+        subscribeToVideoDock,
+        heldSlotOwner,
+        () => null,
     );
 }
 
@@ -105,8 +162,9 @@ export function playVideoHere(slot: HTMLElement): void {
         return;
     }
 
-    video = { ...video, pageUrl: currentPageUrl() };
+    video = { ...video, pagePath: currentPagePath() };
     claimedSlot = slot;
+    isPopOutRequested = false;
     notify();
 }
 
@@ -123,20 +181,18 @@ export function dockedVideo(): DockedVideo | null {
 }
 
 export function useDockedVideo(): DockedVideo | null {
-    return useSyncExternalStore(subscribe, dockedVideo, () => null);
+    return useSyncExternalStore(subscribeToVideoDock, dockedVideo, () => null);
 }
 
-/**
- * The embeds that can hold the video, in the order they appeared on the page, so a video posted twice goes back to
- * the first.
- */
 export function registerVideoSlot(
     src: string,
     element: HTMLElement,
+    owner: string,
 ): () => void {
-    const slot = { src, element };
+    const slot = { src, element, owner };
 
     slots.push(slot);
+    notify();
 
     return () => {
         const index = slots.indexOf(slot);
@@ -144,6 +200,12 @@ export function registerVideoSlot(
         if (index !== -1) {
             slots.splice(index, 1);
         }
+
+        if (heldSlot === slot) {
+            heldSlot = null;
+        }
+
+        notify();
     };
 }
 
@@ -178,10 +240,29 @@ export function canPlayFloating(element: Element): boolean {
     return true;
 }
 
-export function videoSlot(src: string): HTMLElement | null {
+/**
+ * The embed of a video the player goes back to: the one inside `within` when given, otherwise the first on the page,
+ * in the order the page shows them rather than the order they were added in.
+ */
+export function videoSlot(
+    src: string,
+    within: Element | null = null,
+): HTMLElement | null {
+    const candidates = slots
+        .filter((slot) => slot.src === src && slot.element.isConnected)
+        .map((slot) => slot.element);
+    const inside =
+        within === null
+            ? []
+            : candidates.filter((element) => within.contains(element));
+
     return (
-        slots.find((slot) => slot.src === src && slot.element.isConnected)
-            ?.element ?? null
+        (inside.length > 0 ? inside : candidates).sort((first, second) =>
+            first.compareDocumentPosition(second) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+                ? -1
+                : 1,
+        )[0] ?? null
     );
 }
 
