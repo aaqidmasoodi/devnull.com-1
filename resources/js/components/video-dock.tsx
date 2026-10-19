@@ -406,15 +406,13 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 ? null
                 : visibleFraction(slot.getBoundingClientRect(), viewport());
 
-        if (
-            slot === null ||
-            closeAction(fraction, current.wasPoppedOutByHand) === 'stop'
-        ) {
+        if (slot === null || closeAction(fraction) === 'stop') {
             closeVideo();
 
             return;
         }
 
+        current.wasPoppedOutByHand = false;
         flyInto(slot);
     };
 
@@ -456,7 +454,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             if (current.stage === 'inline') {
                 const slot = current.slot;
 
-                // Popped out by hand, it stays out on every page until Play here asks it back, and closing it ends it.
+                // Popped out by hand, it stays out on every page until Play here or closing it asks it back.
                 if (takePopOutRequest() && slot !== null && slot.isConnected) {
                     current.wasPoppedOutByHand = true;
                     flyToCorner();

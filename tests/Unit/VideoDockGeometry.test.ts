@@ -229,20 +229,15 @@ await test('is not at rest while it is still moving', () => {
     );
 });
 
-await test('closing hands a video that floated by itself back to an embed still on screen', () => {
-    assert.equal(closeAction(1, false), 'return');
-    assert.equal(closeAction(popOutBelow, false), 'return');
+await test('closing hands the video back to the embed it came from while it is on screen', () => {
+    assert.equal(closeAction(1), 'return');
+    assert.equal(closeAction(popOutBelow), 'return');
 });
 
 await test('closing stops a video whose embed is scrolled away or gone', () => {
-    assert.equal(closeAction(popOutBelow - 0.01, false), 'stop');
-    assert.equal(closeAction(0, false), 'stop');
-    assert.equal(closeAction(null, false), 'stop');
-});
-
-await test('closing stops a video popped out by hand, even with its embed on screen', () => {
-    assert.equal(closeAction(1, true), 'stop');
-    assert.equal(closeAction(null, true), 'stop');
+    assert.equal(closeAction(popOutBelow - 0.01), 'stop');
+    assert.equal(closeAction(0), 'stop');
+    assert.equal(closeAction(null), 'stop');
 });
 
 await test('only a video that floated by itself comes back by itself', () => {

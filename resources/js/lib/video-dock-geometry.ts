@@ -143,16 +143,11 @@ export const popOutBelow = 0.25;
 export const returnAbove = 0.6;
 
 /**
- * Closing a video that floated by itself hands it back to its embed when enough of it is on screen to watch there, and
- * stops it when the embed is gone or scrolled away. One popped out by hand is closed for good.
+ * Closing the floating player hands the video back to the embed it came from when enough of it is on screen to watch
+ * there, however the video got out, and stops it when the embed is gone or scrolled away.
  */
-export function closeAction(
-    embedFraction: number | null,
-    wasPoppedOutByHand: boolean,
-): 'return' | 'stop' {
-    return !wasPoppedOutByHand &&
-        embedFraction !== null &&
-        embedFraction >= popOutBelow
+export function closeAction(embedFraction: number | null): 'return' | 'stop' {
+    return embedFraction !== null && embedFraction >= popOutBelow
         ? 'return'
         : 'stop';
 }
