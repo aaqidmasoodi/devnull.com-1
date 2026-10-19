@@ -88,32 +88,33 @@ export function EmbedFrame({
 
 /**
  * Where a playing video sits in the post. The player itself lives in the layout and is laid over this slot, so it keeps
- * playing in a corner of the screen once the post is gone. While it floats, the slot says so and offers to bring it back.
- * Otherwise, while the player sits on it, flies in or is about to appear, the slot only shows the poster, so nothing is
- * read out, focused or glimpsed behind the video.
+ * playing in a corner of the screen once the post is gone. While the video floats, or plays in another post, the slot
+ * says so and offers to bring it here. Otherwise, while the player sits on it, flies in or is about to appear, the slot
+ * only shows the poster, so nothing is read out, focused or glimpsed behind the video.
  */
 function VideoSlot({
     embed,
     poster,
     owner,
     isHeld,
+    isHeldElsewhere,
 }: {
     embed: Embed;
     poster: string | null;
     owner: string;
     isHeld: boolean;
+    isHeldElsewhere: boolean;
 }) {
-    const [element, setElement] = useState<HTMLDivElement | null>(null);
-    const isElsewhere = useIsVideoFloating() && !isHeld;
+    const element = useRef<HTMLDivElement | null>(null);
+    const isFloating = useIsVideoFloating();
+    const isElsewhere = !isHeld && (isFloating || isHeldElsewhere);
     const register = useCallback(
         (node: HTMLDivElement | null) => {
-            if (node === null) {
-                return;
-            }
+            element.current = node;
 
-            setElement(node);
-
-            return registerVideoSlot(embed.src, node, owner);
+            return node === null
+                ? undefined
+                : registerVideoSlot(embed.src, node, owner);
         },
         [embed.src, owner],
     );
@@ -143,12 +144,15 @@ function VideoSlot({
                             className="size-7 opacity-80"
                         />
                         <span className="text-sm font-medium">
-                            Playing in picture-in-picture
+                            {isFloating
+                                ? 'Playing in picture-in-picture'
+                                : 'Playing in another post'}
                         </span>
                         <button
                             type="button"
                             onClick={() =>
-                                element !== null && playVideoHere(element)
+                                element.current !== null &&
+                                playVideoHere(element.current)
                             }
                             className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-sm font-medium ring-1 ring-white/25 backdrop-blur-sm transition-colors hover:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
                             data-test="link-embed-play-here"
@@ -234,16 +238,24 @@ export function LinkEmbed({
     const container = useRef<HTMLDivElement | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [canFloat, setCanFloat] = useState(true);
-    const measure = useCallback((element: HTMLDivElement | null) => {
-        container.current = element;
-        setCanFloat(element === null || canPlayFloating(element));
-    }, []);
+    const isVideo = embed.aspect_ratio !== null;
+    const measure = useCallback(
+        (element: HTMLDivElement | null) => {
+            container.current = element;
+
+            // Only a video in the page can float; nothing else needs its surroundings read.
+            if (element !== null && isVideo && !isStatic) {
+                setCanFloat(canPlayFloating(element));
+            }
+        },
+        [isVideo, isStatic],
+    );
     const dockedVideo = useDockedVideo();
     const isPlayingInPlace = useIsPlayingInPlace(owner);
-    const isHeldHere = useHeldSlotOwner() === owner;
+    const heldOwner = useHeldSlotOwner();
+    const isHeldHere = heldOwner === owner;
     const Icon = icons[embed.kind];
     const label = `Play ${preview.title ?? preview.url} from ${embed.provider}`;
-    const isVideo = embed.aspect_ratio !== null;
     const poster = preview.image_url ?? embed.poster ?? null;
     const title = preview.title ?? `${embed.provider} player`;
     const aspectRatio = parseAspectRatio(embed.aspect_ratio);
@@ -251,7 +263,11 @@ export function LinkEmbed({
     const play = () => {
         if (!isVideo) {
             setIsPlaying(true);
-        } else if (aspectRatio === null || !canFloat) {
+        } else if (
+            aspectRatio === null ||
+            container.current === null ||
+            !canPlayFloating(container.current)
+        ) {
             playInPlace(owner);
         } else {
             playVideo(
@@ -289,6 +305,9 @@ export function LinkEmbed({
                                 poster={poster}
                                 owner={owner}
                                 isHeld={isHeldHere}
+                                isHeldElsewhere={
+                                    heldOwner !== null && !isHeldHere
+                                }
                             />
                         ) : (
                             <PlayTrigger

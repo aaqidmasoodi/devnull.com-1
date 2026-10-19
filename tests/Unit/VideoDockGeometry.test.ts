@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     afterEmbedLeft,
+    corners,
+    floorUnder,
     carriedBy,
     homingRange,
     springStiffness,
@@ -414,4 +416,26 @@ await test('lands on an embed that keeps scrolling, instead of chasing it foreve
 
     assert.ok(homeIn(true) < 60);
     assert.equal(homeIn(false), Infinity);
+});
+
+await test('counts what is behind a bar fixed to the bottom as out of view', () => {
+    assert.equal(
+        visibleFraction({ top: 600, height: 200 }, desktop, 0, 700),
+        0.5,
+    );
+    assert.equal(
+        visibleFraction({ top: 700, height: 200 }, desktop, 0, 700),
+        0,
+    );
+});
+
+await test('finds the bar fixed to the bottom under a stretch of the page', () => {
+    const mobileNav = { left: 0, right: 390, top: 780 };
+
+    assert.equal(floorUnder(0, 390, [mobileNav], phone), 780);
+    assert.equal(floorUnder(400, 500, [mobileNav], phone), phone.height);
+});
+
+await test('knows each corner once', () => {
+    assert.deepEqual(corners, ['top-left', 'top-right', 'bottom-left', 'bottom-right']);
 });

@@ -1,4 +1,8 @@
-import { ceilingOver, visibleFraction } from '@/lib/video-dock-geometry';
+import {
+    ceilingOver,
+    floorUnder,
+    visibleFraction,
+} from '@/lib/video-dock-geometry';
 import type { Box, Ceiling, Obstacle, Size } from '@/lib/video-dock-geometry';
 
 /**
@@ -63,6 +67,10 @@ export function ceilingAbove(box: Box): number {
     return ceilingOver(box.x, box.x + box.width, ceilings());
 }
 
+export function floorBelow(box: Box): number {
+    return floorUnder(box.x, box.x + box.width, obstacles(), viewport());
+}
+
 export function toBox(rect: DOMRect): Box {
     return {
         x: rect.left,
@@ -76,7 +84,14 @@ export function toBox(rect: DOMRect): Box {
  * How much of an embed the reader can see, leaving out what has scrolled under a header.
  */
 export function shownFraction(rect: DOMRect): number {
-    return visibleFraction(rect, viewport(), ceilingAbove(toBox(rect)));
+    const box = toBox(rect);
+
+    return visibleFraction(
+        rect,
+        viewport(),
+        ceilingAbove(box),
+        floorBelow(box),
+    );
 }
 
 export function isSameBox(first: Box, second: Box): boolean {
@@ -143,19 +158,39 @@ export function slotRadius(slot: HTMLElement): string {
 
 /**
  * Calls back whenever something the resting player's corner depends on may have moved: a scroll can stick or unstick
- * a header, a resize or a visit can change what sits at the edges, and the chat dock grows and shrinks in place.
+ * a header, a resize or a visit can change what sits at the edges, and the chat dock grows and shrinks in place. Bars
+ * that appear later, like a chat docked after the video started, are picked up as they arrive.
  */
 export function watchCornerChanges(onChange: () => void): () => void {
     const resizes = new ResizeObserver(onChange);
+    const watched = new Set<Element>();
+    const watchNew = () => {
+        watched.forEach((element) => {
+            if (!element.isConnected) {
+                watched.delete(element);
+                resizes.unobserve(element);
+            }
+        });
+        document
+            .querySelectorAll('[data-video-dock-obstacle], [data-main]')
+            .forEach((element) => {
+                if (!watched.has(element)) {
+                    watched.add(element);
+                    resizes.observe(element);
+                    onChange();
+                }
+            });
+    };
+    const arrivals = new MutationObserver(watchNew);
 
-    document
-        .querySelectorAll('[data-video-dock-obstacle], [data-main]')
-        .forEach((element) => resizes.observe(element));
+    watchNew();
+    arrivals.observe(document.body, { childList: true, subtree: true });
     window.addEventListener('resize', onChange);
     window.addEventListener('scroll', onChange, { passive: true });
 
     return () => {
         resizes.disconnect();
+        arrivals.disconnect();
         window.removeEventListener('resize', onChange);
         window.removeEventListener('scroll', onChange);
     };

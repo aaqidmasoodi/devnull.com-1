@@ -3,6 +3,13 @@
  */
 export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
+export const corners: Corner[] = [
+    'top-left',
+    'top-right',
+    'bottom-left',
+    'bottom-right',
+];
+
 export type Box = { x: number; y: number; width: number; height: number };
 
 export type Size = { width: number; height: number };
@@ -27,6 +34,23 @@ export const ceilingGap = 16;
 /**
  * How far down the visible page starts above a horizontal span: below the lowest header stuck over it.
  */
+/**
+ * How far down the visible page ends below a horizontal span: above the highest bar fixed to the bottom under it.
+ */
+export function floorUnder(
+    left: number,
+    right: number,
+    obstacles: Obstacle[],
+    viewport: Size,
+): number {
+    return obstacles
+        .filter((obstacle) => obstacle.left < right && obstacle.right > left)
+        .reduce(
+            (floor, obstacle) => Math.min(floor, obstacle.top),
+            viewport.height,
+        );
+}
+
 export function ceilingOver(
     left: number,
     right: number,
@@ -240,20 +264,21 @@ export function departureBox(rect: Box, viewport: Size, top = 0): Box {
 }
 
 /**
- * How much of an embed shows, counting what is under a header stuck above it as hidden.
+ * How much of an embed shows, counting what is under a header stuck above it, or behind a bar fixed below it, as
+ * hidden.
  */
 export function visibleFraction(
     rect: { top: number; height: number },
     viewport: Size,
     top = 0,
+    bottom = viewport.height,
 ): number {
     if (rect.height <= 0) {
         return 0;
     }
 
     const visible =
-        Math.min(rect.top + rect.height, viewport.height) -
-        Math.max(rect.top, top);
+        Math.min(rect.top + rect.height, bottom) - Math.max(rect.top, top);
 
     return Math.max(0, visible) / rect.height;
 }

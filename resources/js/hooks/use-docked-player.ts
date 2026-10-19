@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createFrameLoop } from '@/lib/frame-loop';
 import {
     closeVideo,
     currentPagePath,
@@ -9,6 +10,7 @@ import {
     setVideoFloating,
     subscribeToVideoDock,
     takeClaimedSlot,
+    useIsVideoFloating,
     takePlayedFrom,
     takePopOutRequest,
     videoSlot,
@@ -18,6 +20,7 @@ import type { DockedVideo } from '@/lib/video-dock';
 import {
     ceilingAbove,
     documentBox,
+    floorBelow,
     isSameBox,
     obstacles,
     ceilings,
@@ -33,8 +36,10 @@ import {
     afterEmbedLeft,
     carriedBy,
     closeAction,
+    ceilingGap,
     cornerBox,
     departureBox,
+    dockMargin,
     dockSize,
     isCompact,
     isSpringSettled,
@@ -89,6 +94,7 @@ type Controller = {
     stage: Stage;
     since: number;
     slot: HTMLElement | null;
+    home: HTMLElement | null;
     playedFrom: Element | null;
     candidate: HTMLElement | null;
     candidateSince: number;
@@ -122,23 +128,25 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
     const [src] = useState(() =>
         playerApiSrc(video.src, window.location.origin),
     );
-    const [isFloating, setIsFloatingState] = useState(false);
+    const isFloating = useIsVideoFloating();
     const [isInteracting, setIsInteracting] = useState(false);
 
     /**
-     * The embeds hear it at once, in the same frame the player starts moving, so none of them shows the wrong card.
+     * Kept in the store alone, so the player and its embeds hear it at once, in the same frame the player starts
+     * moving, and none of them shows the wrong card.
      */
-    const setIsFloating = (next: boolean) => {
-        setIsFloatingState(next);
-        setVideoFloating(next);
-    };
+    const setIsFloating = setVideoFloating;
 
     const state = (): Controller => {
         if (controller.current === null) {
+            // Created between frames, it measures the page afresh rather than trusting the last player's last frame.
+            startFrame();
+
             controller.current = {
                 stage: 'pending',
                 since: performance.now(),
                 slot: null,
+                home: null,
                 playedFrom: takePlayedFrom(),
                 candidate: null,
                 candidateSince: 0,
@@ -202,11 +210,22 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
         }
 
         const { placement } = current;
+        const size = viewport();
+        const whole = { x: 0, y: 0, width: size.width, height: size.height };
+
+        // Between a header stuck along the top and a bar along the bottom, it stays small enough to keep its controls
+        // on screen.
+        const room = {
+            width: size.width,
+            height:
+                Math.min(size.height, floorBelow(whole)) -
+                Math.max(0, ceilingAbove(whole) + ceilingGap - dockMargin),
+        };
 
         return cornerBox(
             placement.corner,
-            dockSize(placement.length, video.aspectRatio, viewport()),
-            viewport(),
+            dockSize(placement.length, video.aspectRatio, room),
+            size,
             obstacles(),
             ceilings(),
         );
@@ -217,6 +236,7 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
 
         current.stage = 'inline';
         current.slot = slot;
+        current.home = slot;
         current.candidate = null;
         current.hiddenSince = null;
         current.velocity = restingVelocity;
@@ -323,14 +343,24 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
     const isOnHomePage = (): boolean =>
         currentPagePath() === dockedVideo()?.pagePath;
 
-    const homeSlot = (): HTMLElement | null =>
-        isOnHomePage() ? videoSlot(video.src) : null;
+    /**
+     * The embed the video was last in, or, if the page has re-rendered it, the first embed of the video on the page.
+     */
+    const homeSlot = (): HTMLElement | null => {
+        if (!isOnHomePage()) {
+            return null;
+        }
+
+        const { home } = state();
+
+        return home !== null && home.isConnected ? home : videoSlot(video.src);
+    };
 
     /**
      * Its embed gone, the player goes back to it if the page only re-rendered it, and otherwise leaves at once, floating
      * on or stopping as the setting says, instead of lingering over the next page.
      */
-    const leaveEmbed = (now: number) => {
+    const leaveEmbed = (now: number): boolean => {
         const current = state();
         const replacement = homeSlot();
 
@@ -339,14 +369,14 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
         if (replacement !== null) {
             flyInto(replacement);
 
-            return;
+            return true;
         }
 
         if (isOnHomePage()) {
             current.stage = 'holding';
             current.since = now;
 
-            return;
+            return true;
         }
 
         if (
@@ -357,9 +387,13 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
             ) === 'float'
         ) {
             flyToCorner();
-        } else {
-            closeVideo();
+
+            return true;
         }
+
+        closeVideo();
+
+        return false;
     };
 
     const close = () => {
@@ -385,6 +419,12 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
      * One frame of the player's life. It says whether it needs another frame straight away, or can sleep.
      */
     const step = (now: number, seconds: number): boolean => {
+        // A player whose video has been closed or replaced has nothing left to do, and must not take requests meant for
+        // the next one.
+        if (dockedVideo()?.src !== video.src) {
+            return false;
+        }
+
         const current = state();
         const wantsPopOut = takePopOutRequest();
         const claimed = takeClaimedSlot();
@@ -431,9 +471,8 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
 
             if (slot === null || !slot.isConnected) {
                 lift();
-                leaveEmbed(now);
 
-                return true;
+                return leaveEmbed(now);
             }
 
             // Popped out by hand, it stays out on every page until Play here or closing it asks it back.
@@ -466,9 +505,7 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
             const slot = current.slot;
 
             if (slot === null || !slot.isConnected) {
-                leaveEmbed(now);
-
-                return true;
+                return leaveEmbed(now);
             }
 
             const rect = slot.getBoundingClientRect();
@@ -567,43 +604,24 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
     };
 
     useLayoutEffect(() => {
-        let request = 0;
-        let isAsleep = true;
-        let checkCorner = 0;
-
-        const tick = (now: number) => {
-            request = 0;
-
+        const loop = createFrameLoop((now, isWaking) => {
             const current = state();
-            const seconds = isAsleep
+            const seconds = isWaking
                 ? frameLength
                 : Math.min((now - current.lastFrame) / 1000, longestFrame);
 
-            isAsleep = false;
             current.lastFrame = now;
 
             if (current.interaction !== null) {
-                isAsleep = true;
-
-                return;
+                return false;
             }
 
             startFrame();
 
-            if (step(now, seconds)) {
-                request = requestAnimationFrame(tick);
-            } else {
-                isAsleep = true;
-            }
-        };
+            return step(now, seconds);
+        });
 
-        const wake = () => {
-            if (request === 0) {
-                request = requestAnimationFrame(tick);
-            }
-        };
-
-        wakeUp.current = wake;
+        wakeUp.current = loop.wake;
 
         // Set up again over a player already sitting in its embed, it says so again: the store forgets the embed only
         // when the video itself is closed or replaced, which is the only time the player really goes away.
@@ -613,20 +631,20 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
             setHeldSlot(current.slot);
         }
 
-        const unsubscribe = subscribeToVideoDock(wake);
-        const unwatch = watchCornerChanges(wake);
+        const unsubscribe = subscribeToVideoDock(loop.wake);
+        const unwatch = watchCornerChanges(loop.wake);
 
         // Resting in a corner, it still looks again now and then, for anything that moved without saying so.
-        checkCorner = window.setInterval(() => {
+        const checkCorner = window.setInterval(() => {
             if (state().stage === 'floating') {
-                wake();
+                loop.wake();
             }
         }, restingCheck);
 
-        wake();
+        loop.wake();
 
         return () => {
-            cancelAnimationFrame(request);
+            loop.stop();
             window.clearInterval(checkCorner);
             unsubscribe();
             unwatch();

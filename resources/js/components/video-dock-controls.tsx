@@ -1,14 +1,8 @@
 import { Maximize2, X } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { corners } from '@/lib/video-dock-geometry';
 import type { Corner } from '@/lib/video-dock-geometry';
-
-const corners: Corner[] = [
-    'top-left',
-    'top-right',
-    'bottom-left',
-    'bottom-right',
-];
 
 /**
  * Each handle sits over a corner from just outside the player, its arc drawn for the top left and turned to fit.
@@ -96,7 +90,8 @@ export function VideoDockControls({
                 </div>
             ))}
 
-            <div className="absolute top-[calc(100%+8px)] left-1/2 flex -translate-x-1/2 items-center gap-2">
+            {/* As wide as the player, with the grabber giving way, so a narrow portrait player keeps its buttons on screen. */}
+            <div className="absolute inset-x-0 top-[calc(100%+8px)] flex items-center justify-center gap-2">
                 <DockButton
                     label="Close video"
                     onClick={onClose}
@@ -109,13 +104,13 @@ export function VideoDockControls({
                     {...tracking}
                     aria-hidden
                     className={cn(
-                        'group/grabber flex h-8 w-32 touch-none items-center justify-center select-none',
+                        'group/grabber flex h-8 w-[clamp(3rem,calc(100%-5rem),8rem)] shrink-0 touch-none items-center justify-center select-none',
                         isInteracting ? 'cursor-grabbing' : 'cursor-grab',
                         pointerEvents,
                     )}
                     data-test="video-dock-handle"
                 >
-                    <span className="h-2 w-28 rounded-full bg-neutral-900 shadow-[0_2px_8px_rgb(0_0_0/0.2)] transition-[width] duration-200 group-hover/grabber:w-32 dark:bg-white dark:shadow-[0_0_0_1px_rgb(0_0_0/0.15),0_2px_8px_rgb(0_0_0/0.35)]" />
+                    <span className="h-2 w-[85%] rounded-full bg-neutral-900 shadow-[0_2px_8px_rgb(0_0_0/0.2)] transition-[width] duration-200 group-hover/grabber:w-full dark:bg-white dark:shadow-[0_0_0_1px_rgb(0_0_0/0.15),0_2px_8px_rgb(0_0_0/0.35)]" />
                 </div>
                 <DockButton
                     label="Full screen"
@@ -151,7 +146,7 @@ function DockButton({
             onClick={onClick}
             onPointerDown={(event) => event.stopPropagation()}
             className={cn(
-                'flex size-8 cursor-pointer items-center justify-center rounded-full bg-neutral-900 text-white shadow-[0_2px_8px_rgb(0_0_0/0.2)] transition-colors hover:bg-neutral-700 focus-visible:ring-2 focus-visible:ring-neutral-900/40 focus-visible:ring-offset-2 focus-visible:outline-none dark:bg-white dark:text-neutral-900 dark:shadow-[0_2px_8px_rgb(0_0_0/0.35)] dark:hover:bg-neutral-200 dark:focus-visible:ring-white/60',
+                'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-neutral-900 text-white shadow-[0_2px_8px_rgb(0_0_0/0.2)] transition-colors hover:bg-neutral-700 focus-visible:ring-2 focus-visible:ring-neutral-900/40 focus-visible:ring-offset-2 focus-visible:outline-none dark:bg-white dark:text-neutral-900 dark:shadow-[0_2px_8px_rgb(0_0_0/0.35)] dark:hover:bg-neutral-200 dark:focus-visible:ring-white/60',
                 className,
             )}
         >

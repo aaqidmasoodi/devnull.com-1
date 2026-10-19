@@ -164,6 +164,22 @@ test('shows only the poster while the player is about to appear in the embed', (
     assert.ok(markup.includes('src="https://i.ytimg.com/vi/first/hqdefault.jpg"'));
 });
 
+test('a copy of the video playing in another post offers to play it here', () => {
+    playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
+
+    const elsewhere = slot();
+    const unregister = registerVideoSlot(embed.src, elsewhere, 'another post');
+
+    setHeldSlot(elsewhere);
+
+    const markup = render(embed);
+
+    assert.ok(markup.includes('Playing in another post'));
+    assert.ok(markup.includes('data-test="link-embed-play-here"'));
+
+    unregister();
+});
+
 test('a new video starts out not floating, whatever the last one did', () => {
     playVideo({ src: embed.src, title: 'Shipping', aspectRatio: 16 / 9 });
     setVideoFloating(true);

@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from 'react';
 import { readStorage, writeStorage } from '@/lib/storage';
 import {
+    corners,
     defaultDockCorner,
     defaultDockLength,
     isCompact,
 } from '@/lib/video-dock-geometry';
-import type { Corner, DockPlacement, Size } from '@/lib/video-dock-geometry';
+import type { DockPlacement, Size } from '@/lib/video-dock-geometry';
 
 /**
  * The video playing on the page. Its player lives in the layout, so it keeps playing while the user moves between
@@ -302,13 +303,6 @@ export function readDockPlacement(viewport: Size): DockPlacement {
         const stored = JSON.parse(
             readStorage(storageKey(viewport)) || 'null',
         ) as Partial<DockPlacement> | null;
-        const corners: Corner[] = [
-            'top-left',
-            'top-right',
-            'bottom-left',
-            'bottom-right',
-        ];
-
         return {
             corner:
                 stored?.corner && corners.includes(stored.corner)
