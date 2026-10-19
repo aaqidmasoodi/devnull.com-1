@@ -31,6 +31,7 @@ import {
 } from '@/lib/video-dock-dom';
 import {
     afterEmbedLeft,
+    carriedBy,
     closeAction,
     cornerBox,
     departureBox,
@@ -93,6 +94,7 @@ type Controller = {
     candidateSince: number;
     box: Box;
     lastSlotRect: Box;
+    lastTarget: Box | null;
     velocity: Box;
     lastFrame: number;
     placement: DockPlacement;
@@ -142,6 +144,7 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
                 candidateSince: 0,
                 box: { x: 0, y: 0, width: 0, height: 0 },
                 lastSlotRect: { x: 0, y: 0, width: 0, height: 0 },
+                lastTarget: null,
                 velocity: restingVelocity,
                 lastFrame: performance.now(),
                 placement: readDockPlacement(viewport()),
@@ -229,6 +232,7 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
 
         lift();
         current.stage = 'to-slot';
+        current.lastTarget = null;
         current.slot = slot;
         current.candidate = null;
         current.hiddenSince = null;
@@ -268,7 +272,7 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
     /**
      * Moves the player one frame along its spring toward where the target is now, and says whether it has arrived.
      */
-    const chase = (target: Box, seconds: number): boolean => {
+    const chase = (target: Box, seconds: number, isHoming = false): boolean => {
         const current = state();
 
         if (prefersReducedMotion()) {
@@ -282,6 +286,7 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
             { position: current.box, velocity: current.velocity },
             target,
             seconds,
+            isHoming,
         );
         const hasArrived = isSpringSettled(spring, target);
 
@@ -475,7 +480,19 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
                 return true;
             }
 
-            if (chase(toBox(rect), seconds)) {
+            const target = toBox(rect);
+
+            // Heading home, it moves with the embed as the page scrolls, so it only ever closes the gap between them.
+            if (current.lastTarget !== null) {
+                place(
+                    'fixed',
+                    carriedBy(current.box, current.lastTarget, target),
+                );
+            }
+
+            current.lastTarget = target;
+
+            if (chase(target, seconds, true)) {
                 attach(slot);
 
                 return false;

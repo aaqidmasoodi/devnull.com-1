@@ -267,14 +267,36 @@ export type Spring = { position: Box; velocity: Box };
 export const restingVelocity: Box = { x: 0, y: 0, width: 0, height: 0 };
 
 const stiffness = 260;
-const damping = 26;
 const springStep = 1 / 240;
 const sides = ['x', 'y', 'width', 'height'] as const;
+
+/**
+ * Slightly under critically damped, so the player overshoots a touch and settles, as a spring does.
+ */
+const dampingRatio = 0.8;
+
+/**
+ * Homing in on an embed, the pull grows as the gap closes, up to this many times as strong within this many pixels,
+ * so the last stretch is closed firmly instead of crept up on.
+ */
+export const homingBoost = 4;
+export const homingRange = 80;
+
+export function springStiffness(gap: number, isHoming: boolean): number {
+    if (!isHoming) {
+        return stiffness;
+    }
+
+    const closeness = Math.max(0, 1 - Math.abs(gap) / homingRange);
+
+    return stiffness * (1 + homingBoost * closeness);
+}
 
 export function stepSpring(
     spring: Spring,
     target: Box,
     seconds: number,
+    isHoming = false,
 ): Spring {
     const position = { ...spring.position };
     const velocity = { ...spring.velocity };
@@ -283,9 +305,11 @@ export function stepSpring(
 
     for (let index = 0; index < steps; index++) {
         for (const side of sides) {
+            const gap = position[side] - target[side];
+            const pull = springStiffness(gap, isHoming);
             const acceleration =
-                -stiffness * (position[side] - target[side]) -
-                damping * velocity[side];
+                -pull * gap -
+                2 * dampingRatio * Math.sqrt(pull) * velocity[side];
 
             velocity[side] += acceleration * step;
             position[side] += velocity[side] * step;
@@ -293,6 +317,18 @@ export function stepSpring(
     }
 
     return { position, velocity };
+}
+
+/**
+ * Carries the player along with a target that moved, like an embed being scrolled, so the spring only has the gap
+ * between them to close and scrolling can never leave it behind.
+ */
+export function carriedBy(position: Box, from: Box, to: Box): Box {
+    return {
+        ...position,
+        x: position.x + to.x - from.x,
+        y: position.y + to.y - from.y,
+    };
 }
 
 export function isSpringSettled(spring: Spring, target: Box): boolean {

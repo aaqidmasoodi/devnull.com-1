@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     afterEmbedLeft,
+    carriedBy,
+    homingRange,
+    springStiffness,
     ceilingGap,
     ceilingOver,
     compactBelow,
@@ -342,4 +345,73 @@ await test('a video scrolled under a header slides back out from beneath it', ()
     );
 
     assert.equal(box.y + box.height, 60 + 400 * popOutBelow);
+});
+
+await test('pulls harder the closer it gets when homing in on an embed', () => {
+    assert.equal(springStiffness(0, true), springStiffness(0, false) * 5);
+    assert.ok(springStiffness(20, true) > springStiffness(60, true));
+    assert.equal(springStiffness(homingRange, true), springStiffness(0, false));
+    assert.equal(springStiffness(500, true), springStiffness(0, false));
+});
+
+await test('homing in settles sooner than a plain spring', () => {
+    const from = { x: 1096, y: 668, width: 320, height: 180 };
+    const target = { x: 200, y: 300, width: 600, height: 338 };
+    const framesToSettle = (isHoming: boolean) => {
+        let spring = { position: from, velocity: restingVelocity };
+
+        for (let frame = 1; frame <= 600; frame++) {
+            spring = stepSpring(spring, target, 1 / 60, isHoming);
+
+            if (isSpringSettled(spring, target)) {
+                return frame;
+            }
+        }
+
+        return Infinity;
+    };
+
+    assert.ok(framesToSettle(true) < framesToSettle(false));
+});
+
+await test('moves with an embed being scrolled', () => {
+    assert.deepEqual(
+        carriedBy(
+            { x: 900, y: 500, width: 320, height: 180 },
+            { x: 200, y: 400, width: 600, height: 338 },
+            { x: 200, y: 340, width: 600, height: 338 },
+        ),
+        { x: 900, y: 440, width: 320, height: 180 },
+    );
+});
+
+await test('lands on an embed that keeps scrolling, instead of chasing it forever', () => {
+    const homeIn = (isCarried: boolean) => {
+        let previous = { x: 200, y: 600, width: 600, height: 338 };
+        let spring = {
+            position: { x: 1096, y: 668, width: 320, height: 180 },
+            velocity: restingVelocity,
+        };
+
+        for (let frame = 1; frame <= 600; frame++) {
+            // The page never stops scrolling while it flies home.
+            const target = { ...previous, y: previous.y - 15 };
+            const position = isCarried
+                ? carriedBy(spring.position, previous, target)
+                : spring.position;
+
+            spring = stepSpring({ position, velocity: spring.velocity }, target, 1 / 60, true);
+
+            if (isSpringSettled(spring, target)) {
+                return frame;
+            }
+
+            previous = target;
+        }
+
+        return Infinity;
+    };
+
+    assert.ok(homeIn(true) < 60);
+    assert.equal(homeIn(false), Infinity);
 });
