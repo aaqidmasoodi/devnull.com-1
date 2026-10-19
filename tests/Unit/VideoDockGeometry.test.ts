@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+    closeAction,
     cornerBox,
     defaultDockLength,
     dockMargin,
@@ -224,4 +225,15 @@ await test('is not at rest while it is still moving', () => {
             box,
         ),
     );
+});
+
+await test('closing hands the video back to an embed still on screen', () => {
+    assert.equal(closeAction(1), 'return');
+    assert.equal(closeAction(popOutBelow), 'return');
+});
+
+await test('closing stops a video whose embed is scrolled away or gone', () => {
+    assert.equal(closeAction(popOutBelow - 0.01), 'stop');
+    assert.equal(closeAction(0), 'stop');
+    assert.equal(closeAction(null), 'stop');
 });

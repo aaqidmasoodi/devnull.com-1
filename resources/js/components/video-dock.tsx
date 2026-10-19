@@ -18,6 +18,7 @@ import {
 } from '@/lib/video-dock';
 import type { DockedVideo } from '@/lib/video-dock';
 import {
+    closeAction,
     cornerBox,
     dockSize,
     isSpringSettled,
@@ -382,6 +383,32 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         return now - current.hiddenSince >= settleDelay;
     };
 
+    /**
+     * Only the page the video was playing on takes it back by itself; anywhere else, its embeds offer to.
+     */
+    const homeSlot = (): HTMLElement | null =>
+        currentPageUrl() === dockedVideo()?.pageUrl
+            ? videoSlot(video.src)
+            : null;
+
+    const close = () => {
+        const current = state();
+        const slot = homeSlot();
+        const fraction =
+            slot === null
+                ? null
+                : visibleFraction(slot.getBoundingClientRect(), viewport());
+
+        if (slot === null || closeAction(fraction) === 'stop') {
+            closeVideo();
+
+            return;
+        }
+
+        current.returnBlockedOn = null;
+        flyInto(slot);
+    };
+
     useLayoutEffect(() => {
         let frame = 0;
 
@@ -491,21 +518,14 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 return;
             }
 
-            // Only the page the video was playing on takes it back by itself; anywhere else, its embeds offer to.
-            const pageUrl = currentPageUrl();
-
             if (
                 current.returnBlockedOn !== null &&
-                current.returnBlockedOn !== pageUrl
+                current.returnBlockedOn !== currentPageUrl()
             ) {
                 current.returnBlockedOn = null;
             }
 
-            const slot =
-                pageUrl === dockedVideo()?.pageUrl &&
-                current.returnBlockedOn === null
-                    ? videoSlot(video.src)
-                    : null;
+            const slot = current.returnBlockedOn === null ? homeSlot() : null;
             const visibleSlot =
                 slot !== null &&
                 visibleFraction(slot.getBoundingClientRect(), viewport()) >=
@@ -849,7 +869,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                     <div className="absolute top-[calc(100%+8px)] left-1/2 flex -translate-x-1/2 items-center gap-2">
                         <DockButton
                             label="Close video"
-                            onClick={closeVideo}
+                            onClick={close}
                             className={controlPointerEvents}
                         >
                             <X className="size-4" />

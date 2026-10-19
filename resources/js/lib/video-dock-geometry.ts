@@ -142,6 +142,16 @@ export function oppositeCorner(corner: Corner): Corner {
 export const popOutBelow = 0.25;
 export const returnAbove = 0.6;
 
+/**
+ * Closing the floating player hands the video back to its embed when enough of it is on screen to watch there, and
+ * stops it when the embed is gone or scrolled away.
+ */
+export function closeAction(embedFraction: number | null): 'return' | 'stop' {
+    return embedFraction !== null && embedFraction >= popOutBelow
+        ? 'return'
+        : 'stop';
+}
+
 export function visibleFraction(
     rect: { top: number; height: number },
     viewport: Size,
