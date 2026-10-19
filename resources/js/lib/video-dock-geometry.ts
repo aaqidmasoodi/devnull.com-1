@@ -1,0 +1,136 @@
+/**
+ * Where the floating video player sits and how big it is, kept apart from the DOM so it can be reasoned about alone.
+ */
+export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+export type Box = { x: number; y: number; width: number; height: number };
+
+export type Size = { width: number; height: number };
+
+export type Point = { x: number; y: number };
+
+/**
+ * Something fixed to the bottom of the viewport, like the mobile nav or the chat dock, that the player rests above.
+ */
+export type Obstacle = { left: number; right: number; top: number };
+
+export type DockPlacement = { corner: Corner; length: number };
+
+export const dockMargin = 16;
+export const minDockLength = 200;
+export const maxDockLength = 720;
+
+export function parseAspectRatio(aspectRatio: string | null): number | null {
+    const [width, height] = (aspectRatio ?? '')
+        .split('/')
+        .map((side) => Number.parseFloat(side));
+
+    return width > 0 && height > 0 ? width / height : null;
+}
+
+export function defaultDockLength(viewport: Size): number {
+    return Math.round(Math.min(360, viewport.width * 0.6));
+}
+
+/**
+ * The length is the player's longer side, so a portrait video floats as tall as a landscape one is wide.
+ */
+export function dockSize(
+    length: number,
+    aspectRatio: number,
+    viewport: Size,
+): Size {
+    const largest = Math.min(maxDockLength, Math.max(minDockLength, length));
+    const size =
+        aspectRatio >= 1
+            ? { width: largest, height: largest / aspectRatio }
+            : { width: largest * aspectRatio, height: largest };
+    const scale = Math.min(
+        1,
+        (viewport.width - dockMargin * 2) / size.width,
+        (viewport.height - dockMargin * 2) / size.height,
+    );
+
+    return {
+        width: Math.round(size.width * scale),
+        height: Math.round(size.height * scale),
+    };
+}
+
+export function cornerBox(
+    corner: Corner,
+    size: Size,
+    viewport: Size,
+    obstacles: Obstacle[] = [],
+): Box {
+    const x = corner.endsWith('left')
+        ? dockMargin
+        : viewport.width - dockMargin - size.width;
+
+    if (corner.startsWith('top')) {
+        return { x, y: dockMargin, ...size };
+    }
+
+    const floor = obstacles
+        .filter(
+            (obstacle) => obstacle.left < x + size.width && obstacle.right > x,
+        )
+        .reduce(
+            (top, obstacle) => Math.min(top, obstacle.top),
+            viewport.height,
+        );
+
+    return {
+        x,
+        y: Math.max(dockMargin, floor - dockMargin - size.height),
+        ...size,
+    };
+}
+
+/**
+ * A fling carries the player on for a moment before it settles, so a quick flick toward a corner lands there even when
+ * it is let go of short of the middle.
+ */
+export function nearestCorner(
+    center: Point,
+    velocity: Point,
+    viewport: Size,
+): Corner {
+    const projection = 200;
+    const x = center.x + velocity.x * projection;
+    const y = center.y + velocity.y * projection;
+
+    return `${y < viewport.height / 2 ? 'top' : 'bottom'}-${x < viewport.width / 2 ? 'left' : 'right'}`;
+}
+
+/**
+ * Resizing pulls the corner that faces the page, while the opposite one stays put against the edge of the screen.
+ */
+export function resizedLength(
+    corner: Corner,
+    box: Box,
+    pointer: Point,
+    aspectRatio: number,
+): number {
+    const width = corner.endsWith('left')
+        ? pointer.x - box.x
+        : box.x + box.width - pointer.x;
+    const height = corner.startsWith('top')
+        ? pointer.y - box.y
+        : box.y + box.height - pointer.y;
+
+    return aspectRatio >= 1
+        ? Math.max(width, height * aspectRatio)
+        : Math.max(height, width / aspectRatio);
+}
+
+export function isMostlyInView(
+    rect: { top: number; height: number },
+    viewport: Size,
+): boolean {
+    const visible =
+        Math.min(rect.top + rect.height, viewport.height) -
+        Math.max(rect.top, 0);
+
+    return rect.height > 0 && visible >= rect.height / 2;
+}

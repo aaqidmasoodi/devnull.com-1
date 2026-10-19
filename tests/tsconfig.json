@@ -12,6 +12,7 @@
         "Unit/DraftImageReads.test.tsx",
         "Unit/ImageAttachments.test.tsx",
         "Unit/StagedRail.test.tsx",
+        "Unit/VideoDock.test.tsx",
         "../resources/js/types/*.d.ts",
         "draft-images.config.ts"
     ]

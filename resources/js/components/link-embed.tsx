@@ -1,17 +1,22 @@
-import { AudioLines, Code2, Play } from 'lucide-react';
+import { AudioLines, Code2, PictureInPicture2, Play } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
+import {
+    playVideo,
+    playVideoHere,
+    registerVideoSlot,
+    useDockedVideo,
+} from '@/lib/video-dock';
+import { parseAspectRatio } from '@/lib/video-dock-geometry';
 import type { Embed, LinkPreview } from '@/types';
 
 const icons = { video: Play, audio: AudioLines, code: Code2 };
 
 function isTall(embed: Embed): boolean {
-    const [width, height] = (embed.aspect_ratio ?? '')
-        .split('/')
-        .map((side) => Number.parseFloat(side));
+    const aspectRatio = parseAspectRatio(embed.aspect_ratio);
 
-    return width > 0 && height > width;
+    return aspectRatio !== null && aspectRatio < 1;
 }
 
 function frameStyle(embed: Embed): CSSProperties {
@@ -42,6 +47,84 @@ function Thumbnail({
             onError={() => setIsBroken(true)}
             className={cn('bg-muted object-cover', className)}
         />
+    );
+}
+
+export function EmbedFrame({
+    src,
+    title,
+    style,
+    className,
+}: {
+    src: string;
+    title: string;
+    style?: CSSProperties;
+    className?: string;
+}) {
+    return (
+        <iframe
+            src={src}
+            title={title}
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation allow-forms"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+            style={style}
+            className={cn('block w-full border-0 bg-muted', className)}
+            data-test="link-embed-frame"
+        />
+    );
+}
+
+/**
+ * Where a playing video sits in the post. The player itself lives in the layout and is laid over this slot, so it keeps
+ * playing in a corner of the screen once the post is gone. While it plays there, the slot says so and offers to bring it
+ * back.
+ */
+function VideoSlot({ embed, poster }: { embed: Embed; poster: string | null }) {
+    const register = useCallback(
+        (element: HTMLDivElement | null) =>
+            element === null
+                ? undefined
+                : registerVideoSlot(embed.src, element),
+        [embed.src],
+    );
+
+    return (
+        <div
+            ref={register}
+            style={frameStyle(embed)}
+            className="relative block w-full overflow-hidden"
+            data-test="link-embed-slot"
+        >
+            <Thumbnail
+                src={poster}
+                className="absolute inset-0 size-full scale-110 opacity-50 blur-md"
+            />
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 p-4 text-center text-white">
+                <PictureInPicture2 aria-hidden className="size-7 opacity-80" />
+                <span className="text-sm font-medium">
+                    Playing in picture-in-picture
+                </span>
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        const slot = event.currentTarget.closest<HTMLElement>(
+                            '[data-test="link-embed-slot"]',
+                        );
+
+                        if (slot !== null) {
+                            playVideoHere(slot);
+                        }
+                    }}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-sm font-medium ring-1 ring-white/25 backdrop-blur-sm transition-colors hover:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+                    data-test="link-embed-play-here"
+                >
+                    <Play aria-hidden className="size-3.5 fill-current" />
+                    Play here
+                </button>
+            </span>
+        </div>
     );
 }
 
@@ -110,23 +193,25 @@ export function LinkEmbed({
     isStatic?: boolean;
 }) {
     const [isPlaying, setIsPlaying] = useState(false);
+    const dockedVideo = useDockedVideo();
     const Icon = icons[embed.kind];
     const label = `Play ${preview.title ?? preview.url} from ${embed.provider}`;
     const isVideo = embed.aspect_ratio !== null;
     const poster = preview.image_url ?? embed.poster ?? null;
+    const title = preview.title ?? `${embed.provider} player`;
+    const aspectRatio = parseAspectRatio(embed.aspect_ratio);
+    const isDocked = !isStatic && dockedVideo?.src === embed.src;
+    const play = () =>
+        aspectRatio === null
+            ? setIsPlaying(true)
+            : playVideo({
+                  src: embed.src,
+                  title,
+                  aspectRatio,
+              });
 
     const frame = (
-        <iframe
-            src={embed.src}
-            title={preview.title ?? `${embed.provider} player`}
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation allow-forms"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allowFullScreen
-            style={frameStyle(embed)}
-            className="block w-full border-0 bg-muted"
-            data-test="link-embed-frame"
-        />
+        <EmbedFrame src={embed.src} title={title} style={frameStyle(embed)} />
     );
 
     return (
@@ -146,11 +231,13 @@ export function LinkEmbed({
                     >
                         {isPlaying ? (
                             frame
+                        ) : isDocked ? (
+                            <VideoSlot embed={embed} poster={poster} />
                         ) : (
                             <PlayTrigger
                                 isStatic={isStatic}
                                 label={label}
-                                onPlay={() => setIsPlaying(true)}
+                                onPlay={play}
                                 style={frameStyle(embed)}
                                 className="group relative block w-full overflow-hidden"
                             >
@@ -186,7 +273,7 @@ export function LinkEmbed({
                 <PlayTrigger
                     isStatic={isStatic}
                     label={label}
-                    onPlay={() => setIsPlaying(true)}
+                    onPlay={play}
                     className={cn(
                         'group flex w-full items-center',
                         !isStatic &&

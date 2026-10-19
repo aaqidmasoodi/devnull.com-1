@@ -18,6 +18,7 @@ import { DeletedPageDialog } from '@/components/deleted-page-dialog';
 import { KeyboardShortcutsDialog } from '@/components/keyboard-shortcuts-dialog';
 import { LocalSignInDialog } from '@/components/local-sign-in-dialog';
 import { SearchDialog } from '@/components/search-dialog';
+import { VideoDock } from '@/components/video-dock';
 import { useIsComposerInView } from '@/hooks/use-composer-visibility';
 import { usePageDeletion } from '@/hooks/use-deleted-resources';
 import { useFixedPage } from '@/hooks/use-fixed-page';
@@ -122,6 +123,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
             {auth.user !== null && auth.remotes !== null && !isMessages && (
                 <ChatDock user={auth.user} />
             )}
+
+            <VideoDock />
 
             <SearchDialog open={isSearching} onOpenChange={setIsSearching} />
 
