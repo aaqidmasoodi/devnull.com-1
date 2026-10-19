@@ -5,13 +5,15 @@ import {
     defaultDockLength,
     dockMargin,
     dockSize,
-    isMostlyInView,
     maxDockLength,
     minDockLength,
     dockGrabberSpace,
     nearestCorner,
     oppositeCorner,
     parseAspectRatio,
+    popOutBelow,
+    returnAbove,
+    visibleFraction,
     resizedLength,
 } from '../../resources/js/lib/video-dock-geometry.ts';
 
@@ -132,10 +134,15 @@ await test('follows the longer pull when resizing', () => {
     );
 });
 
-await test('counts an embed as in view once half of it shows', () => {
-    assert.ok(isMostlyInView({ top: 100, height: 200 }, desktop));
-    assert.ok(isMostlyInView({ top: 800, height: 200 }, desktop));
-    assert.ok(!isMostlyInView({ top: 801, height: 200 }, desktop));
-    assert.ok(!isMostlyInView({ top: -101, height: 200 }, desktop));
-    assert.ok(!isMostlyInView({ top: 100, height: 0 }, desktop));
+await test('measures how much of an embed is in view', () => {
+    assert.equal(visibleFraction({ top: 100, height: 200 }, desktop), 1);
+    assert.equal(visibleFraction({ top: 800, height: 200 }, desktop), 0.5);
+    assert.equal(visibleFraction({ top: -150, height: 200 }, desktop), 0.25);
+    assert.equal(visibleFraction({ top: -300, height: 200 }, desktop), 0);
+    assert.equal(visibleFraction({ top: 1000, height: 200 }, desktop), 0);
+    assert.equal(visibleFraction({ top: 100, height: 0 }, desktop), 0);
+});
+
+await test('needs more of an embed in view to come back than to leave it', () => {
+    assert.ok(popOutBelow < returnAbove);
 });

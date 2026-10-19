@@ -21,7 +21,9 @@ import type { DockedVideo } from '@/lib/video-dock';
 import {
     cornerBox,
     dockSize,
-    isMostlyInView,
+    popOutBelow,
+    returnAbove,
+    visibleFraction,
     nearestCorner,
     oppositeCorner,
     resizedLength,
@@ -34,6 +36,8 @@ import type {
     Point,
     Size,
 } from '@/lib/video-dock-geometry';
+import { playerApiSrc, watchPlayback } from '@/lib/video-player-state';
+import type { Playback } from '@/lib/video-player-state';
 
 /**
  * How long a page has to hold still before the player moves: long enough for the page to restore its scroll after a
@@ -83,6 +87,8 @@ type Controller = {
     interaction: Interaction | null;
     flight: number | null;
     returnBlockedOn: string | null;
+    hiddenSince: number | null;
+    playback: Playback;
 };
 
 function viewport(): Size {
@@ -187,6 +193,10 @@ export function VideoDock() {
 
 function DockedPlayer({ video }: { video: DockedVideo }) {
     const wrapper = useRef<HTMLDivElement>(null);
+    const frame = useRef<HTMLIFrameElement>(null);
+    const [src] = useState(() =>
+        playerApiSrc(video.src, window.location.origin),
+    );
     const surface = useRef<HTMLDivElement>(null);
     const controller = useRef<Controller | null>(null);
     const hideControls = useRef<number | null>(null);
@@ -208,6 +218,8 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 interaction: null,
                 flight: null,
                 returnBlockedOn: null,
+                hiddenSince: null,
+                playback: 'unknown',
             };
         }
 
@@ -260,6 +272,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         current.stage = 'inline';
         current.slot = slot;
         current.candidate = null;
+        current.hiddenSince = null;
         current.lastSlotRect = toBox(slot.getBoundingClientRect());
 
         if (surface.current !== null) {
@@ -361,12 +374,27 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 }
 
                 if (slot !== null && slot.isConnected) {
+                    const rect = slot.getBoundingClientRect();
                     const box = documentBox(slot);
 
-                    current.lastSlotRect = toBox(slot.getBoundingClientRect());
+                    current.lastSlotRect = toBox(rect);
 
                     if (!isSameBox(box, current.box)) {
                         place('absolute', box);
+                    }
+
+                    // Scrolled past while it plays, it follows the reader in a corner; a paused one stays in its post.
+                    const isScrolledPast =
+                        visibleFraction(rect, viewport()) < popOutBelow &&
+                        current.playback !== 'paused';
+
+                    if (!isScrolledPast) {
+                        current.hiddenSince = null;
+                    } else if (current.hiddenSince === null) {
+                        current.hiddenSince = now;
+                    } else if (now - current.hiddenSince >= settleDelay) {
+                        lift(toBox(rect));
+                        flyToCorner();
                     }
 
                     return;
@@ -395,13 +423,15 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                     : null;
             const visibleSlot =
                 slot !== null &&
-                isMostlyInView(slot.getBoundingClientRect(), viewport())
+                visibleFraction(slot.getBoundingClientRect(), viewport()) >=
+                    returnAbove
                     ? slot
                     : null;
 
             if (current.stage === 'pending') {
-                if (visibleSlot !== null) {
-                    attach(visibleSlot);
+                // Just played from its embed, it starts there, however much of the embed is showing.
+                if (slot !== null) {
+                    attach(slot);
                 } else if (now - current.since >= settleDelay) {
                     setIsFloating(true);
                     place('fixed', cornerTarget());
@@ -456,6 +486,18 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     }, []);
 
     useEffect(() => setVideoFloating(isFloating), [isFloating]);
+
+    useEffect(() => {
+        if (frame.current === null) {
+            return;
+        }
+
+        return watchPlayback(frame.current, src, (playback) => {
+            state().playback = playback;
+        });
+        // The controller is created once and lives as long as the player.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [src]);
 
     useEffect(
         () => () => {
@@ -674,7 +716,8 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 })}
             >
                 <EmbedFrame
-                    src={video.src}
+                    ref={frame}
+                    src={src}
                     title={video.title}
                     className={cn('h-full bg-black', {
                         'pointer-events-none': isInteracting,

@@ -135,13 +135,24 @@ export function oppositeCorner(corner: Corner): Corner {
     return `${vertical === 'top' ? 'bottom' : 'top'}-${horizontal === 'left' ? 'right' : 'left'}`;
 }
 
-export function isMostlyInView(
+/**
+ * A playing video floats once all but a sliver of its embed has scrolled away, and comes back once most of it is in
+ * view again. The gap between the two keeps it from flickering in and out at the edge of the screen.
+ */
+export const popOutBelow = 0.25;
+export const returnAbove = 0.6;
+
+export function visibleFraction(
     rect: { top: number; height: number },
     viewport: Size,
-): boolean {
+): number {
+    if (rect.height <= 0) {
+        return 0;
+    }
+
     const visible =
         Math.min(rect.top + rect.height, viewport.height) -
         Math.max(rect.top, 0);
 
-    return rect.height > 0 && visible >= rect.height / 2;
+    return Math.max(0, visible) / rect.height;
 }

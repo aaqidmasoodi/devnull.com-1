@@ -1,5 +1,5 @@
 import { AudioLines, Code2, PictureInPicture2, Play } from 'lucide-react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, ReactNode, Ref } from 'react';
 import { useCallback, useState } from 'react';
 import { ActionTooltip } from '@/components/action-tooltip';
 import { cn } from '@/lib/utils';
@@ -58,14 +58,17 @@ export function EmbedFrame({
     title,
     style,
     className,
+    ref,
 }: {
     src: string;
     title: string;
     style?: CSSProperties;
     className?: string;
+    ref?: Ref<HTMLIFrameElement>;
 }) {
     return (
         <iframe
+            ref={ref}
             src={src}
             title={title}
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write"
