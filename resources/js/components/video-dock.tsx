@@ -295,16 +295,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     };
 
     /**
-     * Emerging from under a header, the player stays beneath the headers until it is clear of them, then rises above
-     * the page. In its embed it sits beneath them anyway.
-     */
-    const layerUnderHeaders = (isUnder: boolean) => {
-        if (wrapper.current !== null) {
-            wrapper.current.style.zIndex = isUnder ? '1' : '';
-        }
-    };
-
-    /**
      * Pins the player to the viewport where the embed is now, so it can fly off from there.
      */
     const lift = () => {
@@ -350,7 +340,6 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         }
 
         place('absolute', documentBox(slot));
-        layerUnderHeaders(false);
         setIsFloating(false);
     };
 
@@ -377,12 +366,15 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
         const current = state();
 
         if (current.stage === 'inline') {
-            const top = ceilingAbove(current.lastSlotRect);
-
-            place('fixed', departureBox(current.lastSlotRect, viewport(), top));
+            place(
+                'fixed',
+                departureBox(
+                    current.lastSlotRect,
+                    viewport(),
+                    ceilingAbove(current.lastSlotRect),
+                ),
+            );
             current.velocity = restingVelocity;
-            // It left by going under a header, so it comes back out from under it too.
-            layerUnderHeaders(current.lastSlotRect.y < top);
         }
 
         current.stage = 'to-corner';
@@ -631,16 +623,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 return;
             }
 
-            const hasArrived = chase(target, seconds);
-
-            if (
-                current.box.y >= ceilingAbove(current.box) - 0.5 ||
-                hasArrived
-            ) {
-                layerUnderHeaders(false);
-            }
-
-            if (hasArrived) {
+            if (chase(target, seconds)) {
                 current.stage = 'floating';
             }
         };
