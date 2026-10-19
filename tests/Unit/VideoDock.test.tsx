@@ -14,10 +14,18 @@ vi.doMock('react', () => ({
 }));
 
 const location = { pathname: '/', search: '' };
+const stored = new Map<string, string>();
 
 Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { location },
+    value: {
+        location,
+        localStorage: {
+            getItem: (key: string) => stored.get(key) ?? null,
+            setItem: (key: string, value: string) => stored.set(key, value),
+            removeItem: (key: string) => stored.delete(key),
+        },
+    },
 });
 
 const { LinkEmbed } = await import('../../resources/js/components/link-embed');
@@ -30,11 +38,13 @@ const {
     playVideo,
     playVideoHere,
     popOutVideo,
+    readDockPlacement,
     registerVideoSlot,
     setVideoFloating,
     takeClaimedSlot,
     takePopOutRequest,
     videoSlot,
+    writeDockPlacement,
 } = await import('../../resources/js/lib/video-dock');
 
 const embed: Embed = {
@@ -69,6 +79,7 @@ const render = (shown: Embed, isStatic = false) =>
     );
 
 beforeEach(() => {
+    stored.clear();
     closeVideo();
     setVideoFloating(false);
     location.pathname = '/';
@@ -229,4 +240,40 @@ test('a new video drops a pop out asked for the previous one', () => {
     playVideo({ src: other.src, title: 'Second', aspectRatio: 16 / 9 });
 
     assert.equal(takePopOutRequest(), false);
+});
+
+const phone = { width: 390, height: 844 };
+const desktop = { width: 1440, height: 900 };
+
+test('opens small in the top right of a phone until it is moved or resized', () => {
+    assert.deepEqual(readDockPlacement(phone), {
+        corner: 'top-right',
+        length: 234,
+    });
+    assert.deepEqual(readDockPlacement(desktop), {
+        corner: 'bottom-right',
+        length: 360,
+    });
+});
+
+test('remembers where it was put and how big it was made', () => {
+    writeDockPlacement({ corner: 'bottom-left', length: 300 }, phone);
+
+    assert.deepEqual(readDockPlacement(phone), {
+        corner: 'bottom-left',
+        length: 300,
+    });
+});
+
+test('remembers a phone and a wide screen apart', () => {
+    writeDockPlacement({ corner: 'top-left', length: 640 }, desktop);
+
+    assert.deepEqual(readDockPlacement(phone), {
+        corner: 'top-right',
+        length: 234,
+    });
+    assert.deepEqual(readDockPlacement(desktop), {
+        corner: 'top-left',
+        length: 640,
+    });
 });

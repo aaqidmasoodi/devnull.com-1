@@ -24,6 +24,7 @@ import {
     returnsByItself,
     cornerBox,
     dockSize,
+    isCompact,
     isSpringSettled,
     restingVelocity,
     stepSpring,
@@ -103,6 +104,7 @@ type Controller = {
     velocity: Box;
     lastFrame: number;
     placement: DockPlacement;
+    isPlacementCompact: boolean;
     interaction: Interaction | null;
     wasPoppedOutByHand: boolean;
     hiddenSince: number | null;
@@ -239,6 +241,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                 velocity: restingVelocity,
                 lastFrame: performance.now(),
                 placement: readDockPlacement(viewport()),
+                isPlacementCompact: isCompact(viewport()),
                 interaction: null,
                 wasPoppedOutByHand: false,
                 hiddenSince: null,
@@ -277,7 +280,15 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
     };
 
     const cornerTarget = (): Box => {
-        const { placement } = state();
+        const current = state();
+
+        // Turning a tablet or resizing a window across the breakpoint switches to the placement remembered for it.
+        if (current.isPlacementCompact !== isCompact(viewport())) {
+            current.isPlacementCompact = isCompact(viewport());
+            current.placement = readDockPlacement(viewport());
+        }
+
+        const { placement } = current;
 
         return cornerBox(
             placement.corner,
@@ -811,7 +822,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             };
         }
 
-        writeDockPlacement(current.placement);
+        writeDockPlacement(current.placement, viewport());
         current.stage = 'to-corner';
     };
 

@@ -38,6 +38,20 @@ export function defaultDockLength(viewport: Size): number {
 }
 
 /**
+ * Below the layout's `md` breakpoint the app is laid out for a phone: the nav sits along the bottom and a thumb does
+ * the scrolling, so the player starts in the top right, out of the way of both.
+ */
+export const compactBelow = 768;
+
+export function isCompact(viewport: Size): boolean {
+    return viewport.width < compactBelow;
+}
+
+export function defaultDockCorner(viewport: Size): Corner {
+    return isCompact(viewport) ? 'top-right' : 'bottom-right';
+}
+
+/**
  * The length is the player's longer side, so a portrait video floats as tall as a landscape one is wide.
  */
 export function dockSize(

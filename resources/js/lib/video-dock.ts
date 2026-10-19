@@ -1,6 +1,10 @@
 import { useSyncExternalStore } from 'react';
 import { readStorage, writeStorage } from '@/lib/storage';
-import { defaultDockLength } from '@/lib/video-dock-geometry';
+import {
+    defaultDockCorner,
+    defaultDockLength,
+    isCompact,
+} from '@/lib/video-dock-geometry';
 import type { Corner, DockPlacement, Size } from '@/lib/video-dock-geometry';
 
 /**
@@ -14,7 +18,12 @@ export type DockedVideo = {
     pageUrl: string;
 };
 
-const storageKey = 'video-dock';
+/**
+ * A phone and a wide screen each remember their own corner and size, so a player made large at a desk doesn't open
+ * large on a phone.
+ */
+const storageKey = (viewport: Size): string =>
+    isCompact(viewport) ? 'video-dock:compact' : 'video-dock';
 const listeners = new Set<() => void>();
 const slots: { src: string; element: HTMLElement }[] = [];
 let video: DockedVideo | null = null;
@@ -147,13 +156,13 @@ export function videoSlot(src: string): HTMLElement | null {
 
 export function readDockPlacement(viewport: Size): DockPlacement {
     const fallback: DockPlacement = {
-        corner: 'bottom-right',
+        corner: defaultDockCorner(viewport),
         length: defaultDockLength(viewport),
     };
 
     try {
         const stored = JSON.parse(
-            readStorage(storageKey) || 'null',
+            readStorage(storageKey(viewport)) || 'null',
         ) as Partial<DockPlacement> | null;
         const corners: Corner[] = [
             'top-left',
@@ -178,6 +187,9 @@ export function readDockPlacement(viewport: Size): DockPlacement {
     }
 }
 
-export function writeDockPlacement(placement: DockPlacement): void {
-    writeStorage(storageKey, JSON.stringify(placement));
+export function writeDockPlacement(
+    placement: DockPlacement,
+    viewport: Size,
+): void {
+    writeStorage(storageKey(viewport), JSON.stringify(placement));
 }

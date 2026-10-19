@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     afterEmbedLeft,
+    compactBelow,
+    defaultDockCorner,
+    isCompact,
     closeAction,
     cornerBox,
     defaultDockLength,
@@ -255,4 +258,16 @@ await test('floats on when its embed leaves while picture-in-picture is automati
 await test('goes back to its embed or stops when picture-in-picture is not automatic', () => {
     assert.equal(afterEmbedLeft(false, true), 'return');
     assert.equal(afterEmbedLeft(false, false), 'stop');
+});
+
+await test('starts in the top right on a phone, out of the way of the nav and the thumb', () => {
+    assert.ok(isCompact(phone));
+    assert.equal(defaultDockCorner(phone), 'top-right');
+    assert.equal(defaultDockCorner({ width: compactBelow - 1, height: 900 }), 'top-right');
+});
+
+await test('starts in the bottom right on a wide screen', () => {
+    assert.ok(!isCompact(desktop));
+    assert.equal(defaultDockCorner(desktop), 'bottom-right');
+    assert.equal(defaultDockCorner({ width: compactBelow, height: 900 }), 'bottom-right');
 });
