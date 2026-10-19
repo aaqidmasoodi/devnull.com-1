@@ -206,14 +206,16 @@ export function returnsByItself(
 }
 
 /**
- * Once the embed a video was playing in has left the page, and hasn't come back into view, it floats on if
- * picture-in-picture is automatic. If not, it goes back to its embed when the page still has one, and stops otherwise.
+ * Once the embed a video was in has left the page, and hasn't come back into view, a playing video floats on if
+ * picture-in-picture is automatic. Otherwise, a paused or finished one included, it goes back to its embed when the
+ * page still has one, and stops when it doesn't: there is nothing to keep watching.
  */
 export function afterEmbedLeft(
     isAutomatic: boolean,
+    isPaused: boolean,
     hasHomeEmbed: boolean,
 ): 'float' | 'return' | 'stop' {
-    if (isAutomatic) {
+    if (isAutomatic && !isPaused) {
         return 'float';
     }
 

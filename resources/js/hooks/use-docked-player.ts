@@ -335,7 +335,13 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
             return;
         }
 
-        if (afterEmbedLeft(current.isAutomatic, false) === 'float') {
+        if (
+            afterEmbedLeft(
+                current.isAutomatic,
+                current.playback === 'paused',
+                false,
+            ) === 'float'
+        ) {
             flyToCorner();
         } else {
             closeVideo();
@@ -496,7 +502,11 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
                 return true;
             }
 
-            const action = afterEmbedLeft(current.isAutomatic, slot !== null);
+            const action = afterEmbedLeft(
+                current.isAutomatic,
+                current.playback === 'paused',
+                slot !== null,
+            );
 
             if (action === 'float') {
                 flyToCorner();

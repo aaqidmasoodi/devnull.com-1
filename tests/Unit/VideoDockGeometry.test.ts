@@ -253,14 +253,19 @@ await test('only a video that floated by itself comes back by itself', () => {
     assert.equal(returnsByItself(false, true), false);
 });
 
-await test('floats on when its embed leaves while picture-in-picture is automatic', () => {
-    assert.equal(afterEmbedLeft(true, false), 'float');
-    assert.equal(afterEmbedLeft(true, true), 'float');
+await test('floats on when its embed leaves while it plays and picture-in-picture is automatic', () => {
+    assert.equal(afterEmbedLeft(true, false, false), 'float');
+    assert.equal(afterEmbedLeft(true, false, true), 'float');
 });
 
 await test('goes back to its embed or stops when picture-in-picture is not automatic', () => {
-    assert.equal(afterEmbedLeft(false, true), 'return');
-    assert.equal(afterEmbedLeft(false, false), 'stop');
+    assert.equal(afterEmbedLeft(false, false, true), 'return');
+    assert.equal(afterEmbedLeft(false, false, false), 'stop');
+});
+
+await test('never floats a paused or finished video when its embed leaves', () => {
+    assert.equal(afterEmbedLeft(true, true, false), 'stop');
+    assert.equal(afterEmbedLeft(true, true, true), 'return');
 });
 
 await test('starts in the top right on a phone, out of the way of the nav and the thumb', () => {
