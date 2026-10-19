@@ -752,13 +752,12 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                         >
                             <svg
                                 viewBox="0 0 40 40"
-                                className="size-full drop-shadow-[0_1px_3px_rgb(0_0_0/0.45)] transition-transform duration-200 group-hover/handle:scale-110"
+                                className="size-full text-neutral-900 drop-shadow-[0_1px_3px_rgb(0_0_0/0.2)] transition-transform duration-200 group-hover/handle:scale-110 dark:text-white dark:drop-shadow-[0_1px_3px_rgb(0_0_0/0.45)]"
                             >
                                 <path
                                     d="M7 26A19 19 0 0 1 26 7"
                                     fill="none"
-                                    stroke="white"
-                                    strokeOpacity={0.9}
+                                    stroke="currentColor"
                                     strokeWidth={5}
                                     strokeLinecap="round"
                                 />
@@ -790,7 +789,7 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
                             )}
                             data-test="video-dock-handle"
                         >
-                            <span className="h-2 w-28 rounded-full bg-white/90 shadow-[0_0_0_1px_rgb(0_0_0/0.15),0_2px_8px_rgb(0_0_0/0.35)] transition-[width,background-color] duration-200 group-hover/grabber:w-32 group-hover/grabber:bg-white" />
+                            <span className="h-2 w-28 rounded-full bg-neutral-900 shadow-[0_2px_8px_rgb(0_0_0/0.2)] transition-[width] duration-200 group-hover/grabber:w-32 dark:bg-white dark:shadow-[0_0_0_1px_rgb(0_0_0/0.15),0_2px_8px_rgb(0_0_0/0.35)]" />
                         </div>
                         <DockButton
                             label="Back to video"
@@ -825,7 +824,7 @@ function DockButton({
             onClick={onClick}
             onPointerDown={(event) => event.stopPropagation()}
             className={cn(
-                'flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white shadow-[0_2px_8px_rgb(0_0_0/0.35)] ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-black/80 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none',
+                'flex size-8 cursor-pointer items-center justify-center rounded-full bg-neutral-900 text-white shadow-[0_2px_8px_rgb(0_0_0/0.2)] transition-colors hover:bg-neutral-700 focus-visible:ring-2 focus-visible:ring-neutral-900/40 focus-visible:ring-offset-2 focus-visible:outline-none dark:bg-white dark:text-neutral-900 dark:shadow-[0_2px_8px_rgb(0_0_0/0.35)] dark:hover:bg-neutral-200 dark:focus-visible:ring-white/60',
                 className,
             )}
         >
