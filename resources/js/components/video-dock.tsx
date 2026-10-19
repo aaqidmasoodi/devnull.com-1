@@ -834,7 +834,8 @@ function DockedPlayer({ video }: { video: DockedVideo }) {
             onPointerLeave={scheduleHidingControls}
             className={cn(
                 'group/dock invisible fixed top-0 left-0 will-change-transform',
-                isFloating ? 'z-40' : 'z-1',
+                // Only while floating: in its post, it belongs under the sticky headers like the rest of the page.
+                isFloating ? 'z-40 [view-transition-name:video-dock]' : 'z-1',
             )}
             data-test="video-dock"
             data-floating={isFloating}
