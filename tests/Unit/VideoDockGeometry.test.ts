@@ -5,6 +5,7 @@ import {
     defaultDockLength,
     dockMargin,
     dockSize,
+    isSpringSettled,
     maxDockLength,
     minDockLength,
     dockGrabberSpace,
@@ -15,6 +16,8 @@ import {
     returnAbove,
     visibleFraction,
     resizedLength,
+    restingVelocity,
+    stepSpring,
 } from '../../resources/js/lib/video-dock-geometry.ts';
 
 const desktop = { width: 1440, height: 900 };
@@ -145,4 +148,80 @@ await test('measures how much of an embed is in view', () => {
 
 await test('needs more of an embed in view to come back than to leave it', () => {
     assert.ok(popOutBelow < returnAbove);
+});
+
+const settle = (
+    from: { x: number; y: number; width: number; height: number },
+    target: (frame: number) => { x: number; y: number; width: number; height: number },
+    velocity = restingVelocity,
+) => {
+    let spring = { position: from, velocity };
+
+    for (let frame = 0; frame < 600; frame++) {
+        spring = stepSpring(spring, target(frame), 1 / 60);
+
+        if (isSpringSettled(spring, target(frame))) {
+            return { spring, frames: frame + 1 };
+        }
+    }
+
+    return { spring, frames: Infinity };
+};
+
+await test('springs the player to its target and comes to rest there', () => {
+    const target = { x: 1096, y: 668, width: 320, height: 180 };
+    const { spring, frames } = settle(
+        { x: 200, y: 300, width: 600, height: 338 },
+        () => target,
+    );
+
+    assert.ok(frames < 90);
+    assert.ok(Math.abs(spring.position.x - target.x) < 0.5);
+    assert.ok(Math.abs(spring.position.width - target.width) < 0.5);
+});
+
+await test('lands on an embed that is still scrolling, not where it was', () => {
+    const { spring, frames } = settle(
+        { x: 1096, y: 668, width: 320, height: 180 },
+        (frame) => ({
+            x: 200,
+            y: 400 - Math.min(frame, 20) * 10,
+            width: 600,
+            height: 338,
+        }),
+    );
+
+    assert.ok(frames < Infinity);
+    assert.ok(Math.abs(spring.position.y - 200) < 0.5);
+});
+
+await test('keeps the speed it set off with', () => {
+    const from = { x: 200, y: 300, width: 600, height: 338 };
+    const still = stepSpring({ position: from, velocity: restingVelocity }, from, 1 / 60);
+    const moving = stepSpring(
+        { position: from, velocity: { ...restingVelocity, y: -1200 } },
+        from,
+        1 / 60,
+    );
+
+    assert.equal(still.position.y, 300);
+    assert.ok(moving.position.y < 290);
+});
+
+await test('is not at rest while it is still moving', () => {
+    const box = { x: 0, y: 0, width: 320, height: 180 };
+
+    assert.ok(isSpringSettled({ position: box, velocity: restingVelocity }, box));
+    assert.ok(
+        !isSpringSettled(
+            { position: box, velocity: { ...restingVelocity, x: 300 } },
+            box,
+        ),
+    );
+    assert.ok(
+        !isSpringSettled(
+            { position: { ...box, x: 5 }, velocity: restingVelocity },
+            box,
+        ),
+    );
 });

@@ -156,3 +156,48 @@ export function visibleFraction(
 
     return Math.max(0, visible) / rect.height;
 }
+
+/**
+ * The player moves on a spring that chases its target wherever it is this frame, so it lands exactly on an embed that
+ * is still scrolling, and turns around mid-flight without a jolt when the target changes.
+ */
+export type Spring = { position: Box; velocity: Box };
+
+export const restingVelocity: Box = { x: 0, y: 0, width: 0, height: 0 };
+
+const stiffness = 260;
+const damping = 26;
+const springStep = 1 / 240;
+const sides = ['x', 'y', 'width', 'height'] as const;
+
+export function stepSpring(
+    spring: Spring,
+    target: Box,
+    seconds: number,
+): Spring {
+    const position = { ...spring.position };
+    const velocity = { ...spring.velocity };
+    const steps = Math.max(1, Math.ceil(seconds / springStep));
+    const step = seconds / steps;
+
+    for (let index = 0; index < steps; index++) {
+        for (const side of sides) {
+            const acceleration =
+                -stiffness * (position[side] - target[side]) -
+                damping * velocity[side];
+
+            velocity[side] += acceleration * step;
+            position[side] += velocity[side] * step;
+        }
+    }
+
+    return { position, velocity };
+}
+
+export function isSpringSettled(spring: Spring, target: Box): boolean {
+    return sides.every(
+        (side) =>
+            Math.abs(spring.position[side] - target[side]) < 0.5 &&
+            Math.abs(spring.velocity[side]) < 20,
+    );
+}
