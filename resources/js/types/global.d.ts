@@ -1,4 +1,4 @@
-import type { Auth, SuggestedUser } from '@/types/auth';
+import type { Auth, SuggestedUser, User } from '@/types/auth';
 import type { Commit } from '@/types/commit';
 import type { CommittedFlash, DeletedFlash, FlashToast } from '@/types/ui';
 
@@ -24,6 +24,7 @@ declare module '@inertiajs/core' {
             autoPictureInPicture: boolean;
             repliesPerPage: number;
             suggestedUsers?: SuggestedUser[];
+            liveFollowing?: User[];
             [key: string]: unknown;
         };
     }
