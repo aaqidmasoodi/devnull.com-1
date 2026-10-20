@@ -70,7 +70,8 @@ function withoutTrailingPunctuation(candidate: string): string {
 
     do {
         previous = url;
-        url = url.replace(/[.,;:!?'"]+$/u, '');
+        // The ellipsis ends a feed excerpt, and smart punctuation closes quotes with ” and ’.
+        url = url.replace(/[.,;:!?'"…”’]+$/u, '');
 
         for (const [open, close] of brackets) {
             if (url.endsWith(close) && count(url, open) < count(url, close)) {
