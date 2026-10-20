@@ -5,6 +5,7 @@ import PrivacyController from '@/actions/App/Http/Controllers/PrivacyController'
 import TermsController from '@/actions/App/Http/Controllers/TermsController';
 import UserFollowersController from '@/actions/App/Http/Controllers/UserFollowersController';
 import UserFollowingController from '@/actions/App/Http/Controllers/UserFollowingController';
+import { BioText } from '@/components/bio-text';
 import { ChangelogPopover } from '@/components/changelog-popover';
 import { GitHubIcon } from '@/components/github-icon';
 import { Button } from '@/components/ui/button';
@@ -157,7 +158,7 @@ export function AppAside({
                     </dl>
                     {user.bio && (
                         <p className="mt-3 text-sm text-pretty text-muted-foreground">
-                            {user.bio}
+                            <BioText bio={user.bio} />
                         </p>
                     )}
                 </section>

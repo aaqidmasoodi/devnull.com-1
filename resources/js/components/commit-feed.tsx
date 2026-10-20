@@ -264,7 +264,7 @@ export function CommitFeed({
                                 localDayKey(commit.created_at));
                     const stagedLane =
                         isBelowComposer && index === 0 && !pinnedCommit
-                            ? laneColor(commit.user.lane)
+                            ? 'var(--rail)'
                             : undefined;
 
                     return (

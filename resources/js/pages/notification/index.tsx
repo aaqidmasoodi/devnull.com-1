@@ -12,7 +12,7 @@ import {
     UserPlus,
     X,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import {
     Fragment,
     useEffect,
@@ -41,9 +41,11 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { UserAvatar } from '@/components/user-avatar';
+import { UserPreview } from '@/components/user-preview';
 import { useNow } from '@/hooks/use-now';
 import { useUser } from '@/hooks/use-user';
 import AppLayout from '@/layouts/app-layout';
+import { backgroundPollOptions } from '@/lib/background-poll';
 import {
     cn,
     formatDayLabel,
@@ -61,6 +63,7 @@ import type {
     DeletedCommit,
     Notification,
     NotificationGroup,
+    User,
 } from '@/types';
 
 type Filters = { type: string };
@@ -158,7 +161,7 @@ export default function Index({
     const [arrivals, setArrivals] = useState(0);
     const { start, stop } = usePoll(
         30_000,
-        () => ({
+        backgroundPollOptions(() => ({
             only: ['notifications', 'auth.unreadNotificationsCount'],
             reset: ['notifications'],
             data: {
@@ -179,7 +182,7 @@ export default function Index({
             onFinish: () => {
                 pollRequest.current = null;
             },
-        }),
+        })),
         { mode: 'rest', background: 'pause' },
     );
     const filterVisit = useRef(0);
@@ -755,7 +758,44 @@ function QuotedOwnCommit({
     return <OwnCommitExcerpt segments={commit.body_segments} />;
 }
 
-function NotificationContent({
+export function ActorAvatar({
+    user,
+    anchor,
+    className,
+    linked = false,
+}: {
+    user: User;
+    anchor: RefObject<HTMLSpanElement | null>;
+    className?: string;
+    linked?: boolean;
+}) {
+    const avatar = <UserAvatar user={user} className={className} />;
+
+    return (
+        <UserPreview
+            user={user}
+            anchor={anchor}
+            className="flex shrink-0 self-start"
+        >
+            <span ref={anchor} className="flex">
+                {linked ? (
+                    <Link
+                        href={show(user)}
+                        tabIndex={-1}
+                        aria-hidden
+                        className="flex rounded-full"
+                    >
+                        {avatar}
+                    </Link>
+                ) : (
+                    avatar
+                )}
+            </span>
+        </UserPreview>
+    );
+}
+
+export function NotificationContent({
     notification,
     summary = false,
     isNew = false,
@@ -770,6 +810,7 @@ function NotificationContent({
 }) {
     const now = useNow();
     const { user } = useUser();
+    const actorRef = useRef<HTMLSpanElement>(null);
     const { actor } = notification;
     const actors =
         summary && 'actors' in notification ? notification.actors : [actor];
@@ -781,6 +822,10 @@ function NotificationContent({
         notification.type === 'followed' || notification.type === 'starred'
             ? actorsCount - 1
             : 0;
+    const grouped =
+        summary &&
+        (actorsCount > 1 ||
+            ('event_count' in notification && notification.event_count > 1));
     const moderation =
         notification.type === 'approved' || notification.type === 'rejected';
     const isOwnCommit = notification.type === 'starred' || moderation;
@@ -871,6 +916,60 @@ function NotificationContent({
         </div>
     );
 
+    if (!summary && isActorsCommit) {
+        return (
+            <div className="flex min-w-0 gap-2.5">
+                <ActorAvatar
+                    user={actor}
+                    anchor={actorRef}
+                    className="size-7"
+                    linked
+                />
+                <div className="min-w-0 flex-1">
+                    <div className="flex h-7 items-center gap-1.5 text-[15px]">
+                        <UserPreview
+                            user={actor}
+                            anchor={actorRef}
+                            className="relative z-10 flex min-w-0 items-center"
+                        >
+                            <Link
+                                href={show(actor)}
+                                className="flex min-w-0 items-center gap-1.5 rounded-md outline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                            >
+                                <span
+                                    className="truncate font-semibold"
+                                    title={actor.name}
+                                >
+                                    {actor.name}
+                                </span>
+                                <span
+                                    className="hidden shrink-4 truncate font-mono text-[13px] text-muted-foreground sm:inline"
+                                    title={`@${actor.username}`}
+                                >
+                                    @{actor.username}
+                                </span>
+                            </Link>
+                        </UserPreview>
+                        <span className="sr-only">
+                            {isNew && 'New. '}
+                            {action}
+                        </span>
+                        <Link
+                            href={href}
+                            className="ml-auto flex shrink-0 items-center gap-2 rounded-md pl-2 outline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
+                        >
+                            {icon}
+                            {time}
+                        </Link>
+                    </div>
+                    <Link href={href} tabIndex={-1} className="block">
+                        {excerpt}
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     if (!summary) {
         return (
             <div className="flex items-start gap-3">
@@ -878,21 +977,31 @@ function NotificationContent({
                     href={href}
                     className="flex min-w-0 flex-1 gap-2.5 rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
                 >
-                    <UserAvatar user={actor} className="size-7 shrink-0" />
+                    <ActorAvatar
+                        user={actor}
+                        anchor={actorRef}
+                        className="size-7"
+                    />
                     <div className="min-w-0 flex-1">
                         <div className="flex h-7 items-center gap-1.5 text-[15px]">
-                            <span
-                                className="truncate font-semibold"
-                                title={actor.name}
+                            <UserPreview
+                                user={actor}
+                                anchor={actorRef}
+                                className="relative z-10 flex min-w-0 items-center gap-1.5"
                             >
-                                {actor.name}
-                            </span>
-                            <span
-                                className="hidden shrink-4 truncate font-mono text-[13px] text-muted-foreground sm:inline"
-                                title={`@${actor.username}`}
-                            >
-                                @{actor.username}
-                            </span>
+                                <span
+                                    className="truncate font-semibold"
+                                    title={actor.name}
+                                >
+                                    {actor.name}
+                                </span>
+                                <span
+                                    className="hidden shrink-4 truncate font-mono text-[13px] text-muted-foreground sm:inline"
+                                    title={`@${actor.username}`}
+                                >
+                                    @{actor.username}
+                                </span>
+                            </UserPreview>
                             <span className="sr-only">
                                 {isNew && 'New. '}
                                 {action}
@@ -911,6 +1020,26 @@ function NotificationContent({
             </div>
         );
     }
+
+    const actorLinks = (
+        <>
+            <Link
+                href={show(actor)}
+                className="relative z-10 truncate font-semibold hover:underline"
+                title={actor.name}
+            >
+                {actor.name}
+            </Link>
+            <Link
+                href={show(actor)}
+                tabIndex={-1}
+                className="relative z-10 shrink-4 truncate font-mono text-[13px] text-muted-foreground"
+                title={`@${actor.username}`}
+            >
+                @{actor.username}
+            </Link>
+        </>
+    );
 
     const rowLink = (
         <Link
@@ -937,7 +1066,19 @@ function NotificationContent({
                                     isNew ? 'border-primary' : 'border-rail',
                                 )}
                             >
-                                <UserAvatar user={actor} className="size-10" />
+                                {grouped ? (
+                                    <UserAvatar
+                                        user={actor}
+                                        className="size-10"
+                                    />
+                                ) : (
+                                    <ActorAvatar
+                                        user={actor}
+                                        anchor={actorRef}
+                                        className="size-10"
+                                        linked
+                                    />
+                                )}
                             </span>
                         </span>
                     ) : (
@@ -961,21 +1102,17 @@ function NotificationContent({
                                     {isNew && (
                                         <span className="sr-only">New. </span>
                                     )}
-                                    <Link
-                                        href={show(actor)}
-                                        className="relative z-10 truncate font-semibold hover:underline"
-                                        title={actor.name}
-                                    >
-                                        {actor.name}
-                                    </Link>
-                                    <Link
-                                        href={show(actor)}
-                                        tabIndex={-1}
-                                        className="relative z-10 shrink-4 truncate font-mono text-[13px] text-muted-foreground"
-                                        title={`@${actor.username}`}
-                                    >
-                                        @{actor.username}
-                                    </Link>
+                                    {grouped ? (
+                                        actorLinks
+                                    ) : (
+                                        <UserPreview
+                                            user={actor}
+                                            anchor={actorRef}
+                                            className="relative z-10 flex min-w-0 items-baseline gap-1.5"
+                                        >
+                                            {actorLinks}
+                                        </UserPreview>
+                                    )}
                                     {time}
                                 </div>
                                 <p className="text-sm text-muted-foreground first-letter:uppercase">
@@ -995,6 +1132,18 @@ function NotificationContent({
                                             )}
                                         >
                                             {notification.type}
+                                        </span>
+                                    ) : !grouped ? (
+                                        <span className="relative z-10 flex">
+                                            <ActorAvatar
+                                                user={actor}
+                                                anchor={actorRef}
+                                                className="size-8 ring-2 ring-card"
+                                                linked={
+                                                    notification.type !==
+                                                    'followed'
+                                                }
+                                            />
                                         </span>
                                     ) : (
                                         <span
@@ -1031,19 +1180,33 @@ function NotificationContent({
                                                 New.{' '}
                                             </span>
                                         )}
-                                        {!moderation && (
-                                            <>
-                                                <Link
-                                                    href={show(actor)}
-                                                    className="relative z-10 inline-block max-w-full truncate align-bottom font-semibold hover:underline"
-                                                    title={actor.name}
-                                                >
-                                                    {actor.name}
-                                                </Link>{' '}
-                                                {otherActors > 0 ? (
-                                                    `and ${otherActors} ${otherActors === 1 ? 'other' : 'others'} `
-                                                ) : (
-                                                    <>
+                                        {!moderation &&
+                                            (grouped ? (
+                                                <>
+                                                    <Link
+                                                        href={show(actor)}
+                                                        className="relative z-10 inline-block max-w-full truncate align-bottom font-semibold hover:underline"
+                                                        title={actor.name}
+                                                    >
+                                                        {actor.name}
+                                                    </Link>{' '}
+                                                    {otherActors > 0 &&
+                                                        `and ${otherActors} ${otherActors === 1 ? 'other' : 'others'} `}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <UserPreview
+                                                        user={actor}
+                                                        anchor={actorRef}
+                                                        className="relative z-10"
+                                                    >
+                                                        <Link
+                                                            href={show(actor)}
+                                                            className="relative z-10 inline-block max-w-full truncate align-bottom font-semibold hover:underline"
+                                                            title={actor.name}
+                                                        >
+                                                            {actor.name}
+                                                        </Link>{' '}
                                                         <Link
                                                             href={show(actor)}
                                                             tabIndex={-1}
@@ -1051,11 +1214,10 @@ function NotificationContent({
                                                             title={`@${actor.username}`}
                                                         >
                                                             @{actor.username}
-                                                        </Link>{' '}
-                                                    </>
-                                                )}
-                                            </>
-                                        )}
+                                                        </Link>
+                                                    </UserPreview>{' '}
+                                                </>
+                                            ))}
                                         {rowLink}
                                         {moderation && '.'}
                                     </p>

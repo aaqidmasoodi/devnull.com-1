@@ -47,6 +47,7 @@ import {
 import { useNow } from '@/hooks/use-now';
 import { clickedCommit } from '@/lib/commit-click';
 import { commitMutationOptions } from '@/lib/commit-mutation-options';
+import { measureCommitSize } from '@/lib/commit-size';
 import {
     cn,
     formatFullDateTime,
@@ -62,7 +63,6 @@ import type { Commit, CursorPaginated, ThreadCommit } from '@/types';
 export function CommitCard({
     commit,
     previousLane,
-    nextLane,
     isDimmed = false,
     isPreviousDimmed = false,
     isHighlighted = false,
@@ -85,7 +85,6 @@ export function CommitCard({
 }: {
     commit: Commit;
     previousLane?: string;
-    nextLane?: string;
     isDimmed?: boolean;
     isPreviousDimmed?: boolean;
     isHighlighted?: boolean;
@@ -177,6 +176,7 @@ export function CommitCard({
 
     return (
         <article
+            ref={measureCommitSize}
             className={cn(
                 'grid scroll-mt-28 transition-[grid-template-rows,opacity,background-color] duration-300 ease-out outline-none hover:bg-accent/50 focus-visible:bg-accent',
                 {
@@ -204,7 +204,6 @@ export function CommitCard({
                 <GraphRail
                     lane={laneColor(commit.user.lane)}
                     previousLane={previousLane}
-                    nextLane={nextLane}
                     endsWithDot={endsWithDot}
                     nodePosition={railNodePosition}
                     hasTail={hasRailTail && railNodePosition !== 'bottom'}
