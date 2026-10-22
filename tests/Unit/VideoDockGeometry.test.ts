@@ -25,6 +25,7 @@ import {
     nearestCorner,
     oppositeCorner,
     parseAspectRatio,
+    lastSliver,
     popOutBelow,
     returnAbove,
     visibleFraction,
@@ -164,9 +165,34 @@ await test('needs more of an embed in view to come back than to leave it', () =>
     assert.ok(popOutBelow < returnAbove);
 });
 
+await test('floats once a quarter of its embed scrolls away, and comes back near the whole of it', () => {
+    assert.equal(popOutBelow, 0.75);
+    assert.equal(returnAbove, 0.9);
+    assert.equal(lastSliver, 0.25);
+    assert.ok(lastSliver < popOutBelow);
+});
+
+await test('counts a tall embed as all showing once it fills the room, so it can come back', () => {
+    const tall = { top: -100, height: 1600 };
+
+    // Taller than the screen, it is never more than the screen's worth in view.
+    assert.equal(visibleFraction(tall, desktop), 1);
+    assert.ok(visibleFraction(tall, desktop) >= returnAbove);
+    assert.equal(visibleFraction({ top: 0, height: 1600 }, desktop, 100), 1);
+    // Scrolled mostly away, it still leaves.
+    assert.ok(
+        visibleFraction({ top: -1500, height: 1600 }, desktop) < lastSliver,
+    );
+});
+
 const settle = (
     from: { x: number; y: number; width: number; height: number },
-    target: (frame: number) => { x: number; y: number; width: number; height: number },
+    target: (frame: number) => {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    },
     velocity = restingVelocity,
 ) => {
     let spring = { position: from, velocity };
@@ -211,7 +237,11 @@ await test('lands on an embed that is still scrolling, not where it was', () => 
 
 await test('keeps the speed it set off with', () => {
     const from = { x: 200, y: 300, width: 600, height: 338 };
-    const still = stepSpring({ position: from, velocity: restingVelocity }, from, 1 / 60);
+    const still = stepSpring(
+        { position: from, velocity: restingVelocity },
+        from,
+        1 / 60,
+    );
     const moving = stepSpring(
         { position: from, velocity: { ...restingVelocity, y: -1200 } },
         from,
@@ -225,7 +255,9 @@ await test('keeps the speed it set off with', () => {
 await test('is not at rest while it is still moving', () => {
     const box = { x: 0, y: 0, width: 320, height: 180 };
 
-    assert.ok(isSpringSettled({ position: box, velocity: restingVelocity }, box));
+    assert.ok(
+        isSpringSettled({ position: box, velocity: restingVelocity }, box),
+    );
     assert.ok(
         !isSpringSettled(
             { position: box, velocity: { ...restingVelocity, x: 300 } },
@@ -242,11 +274,11 @@ await test('is not at rest while it is still moving', () => {
 
 await test('closing hands the video back to the embed it came from while it is on screen', () => {
     assert.equal(closeAction(1), 'return');
-    assert.equal(closeAction(popOutBelow), 'return');
+    assert.equal(closeAction(lastSliver), 'return');
 });
 
 await test('closing stops a video whose embed is scrolled away or gone', () => {
-    assert.equal(closeAction(popOutBelow - 0.01), 'stop');
+    assert.equal(closeAction(lastSliver - 0.01), 'stop');
     assert.equal(closeAction(0), 'stop');
     assert.equal(closeAction(null), 'stop');
 });
@@ -276,13 +308,19 @@ await test('never floats a paused or finished video when its embed leaves', () =
 await test('starts in the top right on a phone, out of the way of the nav and the thumb', () => {
     assert.ok(isCompact(phone));
     assert.equal(defaultDockCorner(phone), 'top-right');
-    assert.equal(defaultDockCorner({ width: compactBelow - 1, height: 900 }), 'top-right');
+    assert.equal(
+        defaultDockCorner({ width: compactBelow - 1, height: 900 }),
+        'top-right',
+    );
 });
 
 await test('starts in the bottom right on a wide screen', () => {
     assert.ok(!isCompact(desktop));
     assert.equal(defaultDockCorner(desktop), 'bottom-right');
-    assert.equal(defaultDockCorner({ width: compactBelow, height: 900 }), 'bottom-right');
+    assert.equal(
+        defaultDockCorner({ width: compactBelow, height: 900 }),
+        'bottom-right',
+    );
 });
 
 await test('a video scrolled past the top slides back in from the top edge', () => {
@@ -292,7 +330,7 @@ await test('a video scrolled past the top slides back in from the top edge', () 
     );
 
     assert.deepEqual(box, { x: 200, y: -300, width: 600, height: 400 });
-    assert.equal(box.y + box.height, 400 * popOutBelow);
+    assert.equal(box.y + box.height, 400 * lastSliver);
 });
 
 await test('a video scrolled past the bottom slides back in from the bottom edge', () => {
@@ -301,7 +339,7 @@ await test('a video scrolled past the bottom slides back in from the bottom edge
         desktop,
     );
 
-    assert.equal(box.y, desktop.height - 400 * popOutBelow);
+    assert.equal(box.y, desktop.height - 400 * lastSliver);
 });
 
 await test('a video still in view sets off from where it is', () => {
@@ -346,7 +384,7 @@ await test('a video scrolled under a header slides back out from beneath it', ()
         60,
     );
 
-    assert.equal(box.y + box.height, 60 + 400 * popOutBelow);
+    assert.equal(box.y + box.height, 60 + 400 * lastSliver);
 });
 
 await test('pulls harder the closer it gets when homing in on an embed', () => {
@@ -402,7 +440,12 @@ await test('lands on an embed that keeps scrolling, instead of chasing it foreve
                 ? carriedBy(spring.position, previous, target)
                 : spring.position;
 
-            spring = stepSpring({ position, velocity: spring.velocity }, target, 1 / 60, true);
+            spring = stepSpring(
+                { position, velocity: spring.velocity },
+                target,
+                1 / 60,
+                true,
+            );
 
             if (isSpringSettled(spring, target)) {
                 return frame;
@@ -437,5 +480,10 @@ await test('finds the bar fixed to the bottom under a stretch of the page', () =
 });
 
 await test('knows each corner once', () => {
-    assert.deepEqual(corners, ['top-left', 'top-right', 'bottom-left', 'bottom-right']);
+    assert.deepEqual(corners, [
+        'top-left',
+        'top-right',
+        'bottom-left',
+        'bottom-right',
+    ]);
 });

@@ -57,11 +57,10 @@ export default function DockedPlayer({ video }: { video: DockedVideo }) {
             onPointerEnter={showControls}
             onPointerLeave={scheduleHidingControls}
             className={cn(
-                'group/dock invisible fixed top-0 left-0 will-change-transform',
-                // Only while floating: in its post, it belongs under the sticky headers like the rest of the page.
-                player.isFloating
-                    ? 'z-40 [view-transition-name:video-dock]'
-                    : 'z-1',
+                // In its post it belongs under the sticky headers like the rest of the page. The player moves itself
+                // to the layer over them once it floats and has come out from under them.
+                'group/dock invisible fixed top-0 left-0 z-1 will-change-transform',
+                player.isFloating && '[view-transition-name:video-dock]',
             )}
             data-test="video-dock"
             data-floating={player.isFloating}

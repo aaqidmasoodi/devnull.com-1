@@ -43,6 +43,7 @@ import {
     dockSize,
     isCompact,
     isSpringSettled,
+    lastSliver,
     nearestCorner,
     oppositeCorner,
     popOutBelow,
@@ -108,9 +109,18 @@ type Controller = {
     interaction: Interaction | null;
     wasPoppedOutByHand: boolean;
     hiddenSince: number | null;
+    wasInView: boolean;
+    isEmerging: boolean;
+    isFloating: boolean;
     playback: Playback;
     isAutomatic: boolean;
 };
+
+/**
+ * The layer of its post, under the sticky headers, and the layer it floats on, over them.
+ */
+const inlineLayer = '1';
+const floatingLayer = '40';
 
 export type DockedPlayer = ReturnType<typeof useDockedPlayer>;
 
@@ -135,7 +145,26 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
      * Kept in the store alone, so the player and its embeds hear it at once, in the same frame the player starts
      * moving, and none of them shows the wrong card.
      */
-    const setIsFloating = setVideoFloating;
+    const setIsFloating = (value: boolean) => {
+        state().isFloating = value;
+        applyLayer();
+        setVideoFloating(value);
+    };
+
+    /**
+     * Floating, it is over the sticky headers. Setting off from its post it stays under them until it has come out
+     * from beneath, so what has already scrolled under a header doesn't flash over it as the player lifts off.
+     */
+    const applyLayer = () => {
+        const current = state();
+
+        if (wrapper.current !== null) {
+            wrapper.current.style.zIndex =
+                current.isFloating && !current.isEmerging
+                    ? floatingLayer
+                    : inlineLayer;
+        }
+    };
 
     const state = (): Controller => {
         if (controller.current === null) {
@@ -160,6 +189,9 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
                 interaction: null,
                 wasPoppedOutByHand: false,
                 hiddenSince: null,
+                wasInView: false,
+                isEmerging: false,
+                isFloating: false,
                 playback: 'unknown',
                 isAutomatic,
             };
@@ -251,6 +283,8 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
         const current = state();
 
         lift();
+        current.isEmerging = false;
+        current.wasInView = false;
         current.stage = 'to-slot';
         current.lastTarget = null;
         current.slot = slot;
@@ -278,6 +312,8 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
                 ),
             );
             current.velocity = restingVelocity;
+            // What has already scrolled under a header must not flash over it as the player lifts off.
+            current.isEmerging = true;
         }
 
         current.stage = 'to-corner';
@@ -317,14 +353,23 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
     };
 
     /**
-     * A playing video leaves its embed once the embed has all but scrolled away, after it has stayed away a moment.
+     * A playing video leaves its embed once a quarter of it has scrolled away after it showed well, or all but a
+     * sliver has otherwise, and it has stayed away a moment. Played while half off the screen, it doesn't fly off at
+     * once.
      */
     const hasScrolledPast = (rect: DOMRect, now: number): boolean => {
         const current = state();
+        const fraction = shownFraction(rect);
+
+        if (fraction >= popOutBelow) {
+            current.wasInView = true;
+        }
+
         const isAway =
             current.isAutomatic &&
             current.playback !== 'paused' &&
-            shownFraction(rect) < popOutBelow;
+            (fraction < lastSliver ||
+                (current.wasInView && fraction < popOutBelow));
 
         if (!isAway) {
             current.hiddenSince = null;
@@ -596,12 +641,26 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
             return current.candidate !== null;
         }
 
-        if (chase(cornerTarget(), seconds)) {
+        const hasArrived = chase(cornerTarget(), seconds);
+
+        if (current.isEmerging && (hasArrived || isClear(current.box))) {
+            current.isEmerging = false;
+            applyLayer();
+        }
+
+        if (hasArrived) {
             current.stage = 'floating';
         }
 
         return true;
     };
+
+    /**
+     * Out from under every header above it and bar below it.
+     */
+    const isClear = (box: Box): boolean =>
+        box.y >= ceilingAbove(box) - 0.5 &&
+        box.y + box.height <= floorBelow(box) + 0.5;
 
     useLayoutEffect(() => {
         const loop = createFrameLoop((now, isWaking) => {
@@ -691,6 +750,8 @@ export function useDockedPlayer(video: DockedVideo, isAutomatic: boolean) {
         event.currentTarget.setPointerCapture(event.pointerId);
         current.interaction = interaction;
         current.velocity = restingVelocity;
+        current.isEmerging = false;
+        applyLayer();
         setIsInteracting(true);
     };
 

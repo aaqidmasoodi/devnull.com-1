@@ -202,18 +202,25 @@ export function oppositeCorner(corner: Corner): Corner {
 }
 
 /**
- * A playing video floats once all but a sliver of its embed has scrolled away, and comes back once most of it is in
- * view again. The gap between the two keeps it from flickering in and out at the edge of the screen.
+ * A playing video that has been in full view floats as soon as a quarter of its embed scrolls away, so it peels off
+ * its post while most of it still shows, and comes back once nearly all of it shows again. The gap between the two
+ * keeps it from flickering in and out around one line.
  */
-export const popOutBelow = 0.25;
-export const returnAbove = 0.6;
+export const popOutBelow = 0.75;
+export const returnAbove = 0.9;
+
+/**
+ * Under this, in full view before or not, a playing video floats, and closing it doesn't hand it back: it is all but
+ * gone from its embed.
+ */
+export const lastSliver = 0.25;
 
 /**
  * Closing the floating player hands the video back to the embed it came from when enough of it is on screen to watch
  * there, however the video got out, and stops it when the embed is gone or scrolled away.
  */
 export function closeAction(embedFraction: number | null): 'return' | 'stop' {
-    return embedFraction !== null && embedFraction >= popOutBelow
+    return embedFraction !== null && embedFraction >= lastSliver
         ? 'return'
         : 'stop';
 }
@@ -252,7 +259,7 @@ export function afterEmbedLeft(
  * header's bottom.
  */
 export function departureBox(rect: Box, viewport: Size, top = 0): Box {
-    const sliver = rect.height * popOutBelow;
+    const sliver = rect.height * lastSliver;
 
     return {
         ...rect,
@@ -265,7 +272,8 @@ export function departureBox(rect: Box, viewport: Size, top = 0): Box {
 
 /**
  * How much of an embed shows, counting what is under a header stuck above it, or behind a bar fixed below it, as
- * hidden.
+ * hidden. An embed taller than the room between them counts as all showing once it fills that room, so a tall video
+ * can still come back.
  */
 export function visibleFraction(
     rect: { top: number; height: number },
@@ -280,7 +288,10 @@ export function visibleFraction(
     const visible =
         Math.min(rect.top + rect.height, bottom) - Math.max(rect.top, top);
 
-    return Math.max(0, visible) / rect.height;
+    return Math.min(
+        1,
+        Math.max(0, visible) / Math.min(rect.height, Math.max(1, bottom - top)),
+    );
 }
 
 /**
@@ -291,7 +302,7 @@ export type Spring = { position: Box; velocity: Box };
 
 export const restingVelocity: Box = { x: 0, y: 0, width: 0, height: 0 };
 
-const stiffness = 260;
+const stiffness = 130;
 const springStep = 1 / 240;
 const sides = ['x', 'y', 'width', 'height'] as const;
 
