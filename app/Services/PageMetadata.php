@@ -41,7 +41,7 @@ final readonly class PageMetadata
     public function home(): array
     {
         $url = route('home');
-        $description = 'A social network for developers. Sign in with GitHub, follow people who write code, and commit plain text to a shared log.';
+        $description = 'A social network for developers. Sign in with GitHub. Commit messages to the log. Talk with other devs.';
 
         return [
             'type' => 'website',
@@ -75,7 +75,7 @@ final readonly class PageMetadata
                         'name' => '/dev/null',
                         'url' => $url,
                         'logo' => url('/icon-512.png'),
-                        'sameAs' => ['https://github.com/nunomaduro/dev-null.sh'],
+                        'sameAs' => ['https://github.com/'.config()->string('services.github.repository')],
                     ],
                 ],
             ],

@@ -17,6 +17,7 @@ import OperationsLayout from '@/layouts/operations/layout';
 import { formatCount } from '@/lib/numbers';
 import { cn, formatZonedDate } from '@/lib/utils';
 import type {
+    AcquisitionDay,
     ActivationDay,
     ActiveUsers,
     ActivityBucket,
@@ -191,16 +192,12 @@ function Definition({
 }
 
 function retentionDefinition(funnel: Funnel): string {
-    if (funnel.retention_horizon === null) {
-        return 'Came back at least once, 14 days or more after signing up. Not measurable yet: no signup has reached its first day since tracking started.';
-    }
+    const definition =
+        'Came back at least once from the day after signing up, day 1, while /dev/null is days old; day 14 later.';
 
-    const day =
-        funnel.retention_horizon === 14
-            ? 'day 14'
-            : `day ${funnel.retention_horizon} for now, day 14 from ${funnel.retention_full_on}`;
-
-    return `Came back at least once from ${day} after signing up. Retention rate = retained ÷ the ${formatCount(funnel.retention_eligible)} sign-ups old enough to tell.`;
+    return funnel.retention_eligible === 0
+        ? `${definition} Not measurable yet: no signup has got through its day 1 since tracking started.`
+        : `${definition} Retention rate = retained ÷ the ${formatCount(funnel.retention_eligible)} sign-ups old enough to tell.`;
 }
 
 function FunnelValue({ funnel }: { funnel: Funnel }) {
@@ -260,8 +257,8 @@ function FunnelValue({ funnel }: { funnel: Funnel }) {
             />
             <Definition title="Activation">
                 Got something from the network in their first 12 hours: starred
-                or saved commits by 3+ people, or someone replied to, quoted or
-                starred their post. Activation rate = activated ÷ the{' '}
+                by 3+ people, or someone replied to, quoted or starred their
+                post. Activation rate = activated ÷ the{' '}
                 {formatCount(funnel.activation_eligible)} sign-ups at least 12
                 hours old.
             </Definition>
@@ -302,12 +299,13 @@ type DailyBar = {
 
 /**
  * One slot per day of the range, so charts of the same range line up, with a bar on the days that have one, as tall as
- * its value against the tallest, which a line at the top names. A partial day, still counting, is lighter. Tooltips of
- * the bars near an edge align with it, so they stay on screen.
+ * its value against the tallest, and a line at the average of the range, to tell the days above it from the days below.
+ * A partial day, still counting, is lighter. Tooltips of the bars near an edge align with it, so they stay on screen.
  */
 function DailyBars({
     range,
     bars,
+    average,
     caption,
     column,
     empty,
@@ -315,6 +313,7 @@ function DailyBars({
 }: {
     range: TrafficRange;
     bars: DailyBar[];
+    average: number | null;
     caption: string;
     column: string;
     empty: string;
@@ -328,7 +327,11 @@ function DailyBars({
         );
     }
 
-    const top = Math.max(Number.MIN_VALUE, ...bars.map((bar) => bar.value));
+    const top = Math.max(
+        Number.MIN_VALUE,
+        average ?? 0,
+        ...bars.map((bar) => bar.value),
+    );
     const label = (date: string) => formatZonedDate(date, 'UTC');
     const byDate = new Map(bars.map((bar) => [bar.date, bar]));
     const dates: string[] = [];
@@ -344,11 +347,16 @@ function DailyBars({
     return (
         <figure className="pt-5">
             <div className="relative flex h-48 items-end gap-1 border-b border-rail sm:gap-2">
-                <div className="pointer-events-none absolute inset-x-0 top-0 border-t border-dashed border-rail">
-                    <span className="absolute bottom-full left-0 mb-0.5 font-mono text-xs text-muted-foreground tabular-nums">
-                        {format(top)}
-                    </span>
-                </div>
+                {average !== null && (
+                    <div
+                        className="pointer-events-none absolute inset-x-0 z-[1] border-t border-dashed border-foreground/50"
+                        style={{ bottom: `${(average / top) * 100}%` }}
+                    >
+                        <span className="absolute bottom-full left-0 mb-0.5 rounded-sm bg-background/90 px-1 font-mono text-xs text-muted-foreground tabular-nums">
+                            avg {format(average)}
+                        </span>
+                    </div>
+                )}
                 {dates.map((date, index) => {
                     const bar = byDate.get(date);
 
@@ -399,37 +407,133 @@ function DailyBars({
                 <span>{label(range.from)}</span>
                 <span>{label(range.to)}</span>
             </div>
-            <table className="sr-only">
-                <caption>{caption}</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">Day</th>
-                        <th scope="col">{column}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {bars.map((bar) => (
-                        <tr key={bar.date}>
-                            <th scope="row">{bar.date}</th>
-                            <td>{bar.label}</td>
+            <div className="sr-only">
+                <table>
+                    <caption>{caption}</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Day</th>
+                            <th scope="col">{column}</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {bars.map((bar) => (
+                            <tr key={bar.date}>
+                                <th scope="row">{bar.date}</th>
+                                <td>{bar.label}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </figure>
+    );
+}
+
+/**
+ * Signups or the conversion rate of each day, one at a time, rather than both on one chart with two scales: each keeps
+ * its own zero, so neither trend is drawn against the other's. The tooltip tells both.
+ */
+function AcquisitionByDay({
+    range,
+    days,
+    conversion,
+}: {
+    range: TrafficRange;
+    days: AcquisitionDay[];
+    conversion: number | null;
+}) {
+    const [measure, setMeasure] = useState<'signups' | 'conversion'>('signups');
+    const complete = days.filter((day) => day.complete);
+    const converting = days.filter(
+        (
+            day,
+        ): day is AcquisitionDay & { visitors: number; converted: number } =>
+            day.visitors !== null && day.visitors > 0 && day.converted !== null,
+    );
+
+    return (
+        <>
+            <div role="group" aria-label="Measure" className="flex gap-1">
+                <PresetButton
+                    isActive={measure === 'signups'}
+                    onClick={() => setMeasure('signups')}
+                >
+                    sign-ups
+                </PresetButton>
+                <PresetButton
+                    isActive={measure === 'conversion'}
+                    onClick={() => setMeasure('conversion')}
+                >
+                    conversion rate
+                </PresetButton>
+            </div>
+            {measure === 'signups' ? (
+                <DailyBars
+                    range={range}
+                    average={
+                        complete.length === 0
+                            ? null
+                            : Math.round(
+                                  complete.reduce(
+                                      (sum, day) => sum + day.signups,
+                                      0,
+                                  ) / complete.length,
+                              )
+                    }
+                    bars={days
+                        .filter((day) => day.signups > 0)
+                        .map((day) => ({
+                            date: day.date,
+                            value: day.signups,
+                            isPartial: !day.complete,
+                            label:
+                                day.visitors && day.converted !== null
+                                    ? `${formatCount(day.signups)} sign-ups, ${percent(day.converted / day.visitors)} conversion`
+                                    : `${formatCount(day.signups)} sign-ups`,
+                        }))}
+                    caption="Sign-ups by day"
+                    column="Sign-ups"
+                    format={formatCount}
+                    empty="no sign-ups in these dates"
+                />
+            ) : (
+                <DailyBars
+                    range={range}
+                    average={conversion}
+                    bars={converting.map((day) => {
+                        const rate = day.converted / day.visitors;
+
+                        return {
+                            date: day.date,
+                            value: rate,
+                            isPartial: !day.complete,
+                            label: `${percent(rate)} of ${formatCount(day.visitors)} visitors, ${formatCount(day.signups)} sign-ups`,
+                        };
+                    })}
+                    caption="Conversion rate by day"
+                    column="Conversion rate"
+                    format={percent}
+                    empty="nothing yet: Fathom isn't set up, didn't answer, or had no visitors in these dates"
+                />
+            )}
+        </>
     );
 }
 
 function ActivationByDay({
     range,
     days,
+    average,
 }: {
     range: TrafficRange;
     days: ActivationDay[];
+    average: number | null;
 }) {
     return (
         <DailyBars
             range={range}
+            average={average}
             bars={days.map((day) => {
                 const rate = day.activated / day.eligible;
 
@@ -456,10 +560,19 @@ function ActiveUserCounts({
     counts: ActivityBucket[];
 }) {
     const today = utcDate();
+    const complete = counts.filter((day) => day.date !== today);
 
     return (
         <DailyBars
             range={range}
+            average={
+                complete.length === 0
+                    ? null
+                    : Math.round(
+                          complete.reduce((sum, day) => sum + day.count, 0) /
+                              complete.length,
+                      )
+            }
             bars={counts.map((day) => ({
                 date: day.date,
                 value: day.count,
@@ -519,6 +632,21 @@ export default function Show({
                 <ActiveUserCounts range={range} counts={activeUserCounts} />
             </Section>
 
+            <Section title="Acquisition by day" meta="by day, utc">
+                <Deferred
+                    data="funnel"
+                    fallback={<Skeleton className="h-56 w-full rounded-lg" />}
+                >
+                    {funnel && (
+                        <AcquisitionByDay
+                            range={range}
+                            days={funnel.acquisition_by_day}
+                            conversion={funnel.rates.conversion}
+                        />
+                    )}
+                </Deferred>
+            </Section>
+
             <Section title="Activation by signup day" meta="by day, utc">
                 <Deferred
                     data="funnel"
@@ -528,6 +656,7 @@ export default function Show({
                         <ActivationByDay
                             range={range}
                             days={funnel.activation_by_day}
+                            average={funnel.rates.activation}
                         />
                     )}
                 </Deferred>

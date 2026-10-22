@@ -69,9 +69,11 @@ final class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'repository' => config('services.github.repository'),
             'auth' => [
                 'user' => fn (): ?User => $request->user()?->loadCounts(),
                 'isAdmin' => $isAdmin,
+                'mustReadCommitRules' => $user instanceof User && $user->commit_rules_accepted_at === null,
                 'log' => fn (): ?Log => $request->user()?->log,
                 'unreadNotificationsCount' => fn (): int => $user instanceof User ? resolve(NotificationGroupsQuery::class)->unreadCount($user, ListNotificationsRequest::rememberedType($request, $user)) : 0,
                 'unreadMessagesCount' => fn (): int => $user?->remotes_enabled ? resolve(ConversationsQuery::class)->unreadCount($user) : 0,
@@ -100,7 +102,8 @@ final class HandleInertiaRequests extends Middleware
                 'suggestedUsers' => Inertia::defer(fn (): Collection => resolve(SuggestedUsersQuery::class)->get(
                     $user,
                     round: max(0, (int) $request->cookie('who_to_follow_round')),
-                ))->once(),
+                    spares: 3,
+                ))->once()->merge()->matchOn('id'),
             ] : [],
         ];
     }

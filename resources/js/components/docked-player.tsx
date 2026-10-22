@@ -1,6 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
-import { EmbedFrame } from '@/components/link-embed';
+import { PlayerFrame } from '@/components/link-embed';
 import { VideoDockControls } from '@/components/video-dock-controls';
 import { useDockedPlayer } from '@/hooks/use-docked-player';
 import { cn } from '@/lib/utils';
@@ -73,7 +73,7 @@ export default function DockedPlayer({ video }: { video: DockedVideo }) {
                         player.isFloating,
                 })}
             >
-                <EmbedFrame
+                <PlayerFrame
                     ref={player.frame}
                     src={player.src}
                     title={video.title}

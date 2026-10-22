@@ -139,6 +139,7 @@ test('preserves restored images and link cards and allows scheduling them', () =
     };
     assert.deepEqual(form.props.transform(data), {
         ...data,
+        commit_rules_accepted: true,
         images: [image],
         image_descriptions: ['A restored screenshot'],
     });
@@ -261,7 +262,10 @@ test('removing restored images enables polls and successful posting resets the p
             body: draft.body,
             poll: { options: ['Tabs', 'Spaces'], duration: 1440 },
         };
-        assert.deepEqual(view.form.props.transform(data), data);
+        assert.deepEqual(view.form.props.transform(data), {
+            ...data,
+            commit_rules_accepted: true,
+        });
         view.form.props.onSuccess({
             flash: { toast: { type: 'error', message: 'Slow down' } },
         });
@@ -348,6 +352,7 @@ test('schedules in UTC with pasted images and the chosen link card', () => {
         .replace(/\.\d{3}Z$/, '+00:00');
     assert.deepEqual(view.form.props.transform({ body: draft.body }), {
         body: draft.body,
+        commit_rules_accepted: true,
         scheduled_at: scheduledAt,
     });
     assert.equal(
@@ -382,6 +387,7 @@ test('schedules in UTC with pasted images and the chosen link card', () => {
     const data = { body: draft.body, link_preview_url: '' };
     assert.deepEqual(view.form.props.transform(data), {
         ...data,
+        commit_rules_accepted: true,
         images: [image],
         image_descriptions: [''],
         scheduled_at: scheduledAt,
@@ -406,6 +412,7 @@ test('retains restored images while sensitive text requires explicit approval', 
     assert.equal(form.props.onBefore(), false);
     assert.deepEqual(form.props.transform({ body: draft.body }), {
         body: draft.body,
+        commit_rules_accepted: true,
         images: [image],
         image_descriptions: ['A restored screenshot'],
     });
@@ -440,6 +447,7 @@ test('previews restored images and descriptions while keeping them attached when
     );
     assert.deepEqual(view.form.props.transform({ body: draft.body }), {
         body: draft.body,
+        commit_rules_accepted: true,
         images: [image],
         image_descriptions: ['A restored screenshot'],
     });
@@ -628,6 +636,44 @@ test('a draft that mentions a bug suggests /bug, keeps the text when used, and c
     );
 });
 
+test('switching a discounted commit to an issue enforces the literal limit for the button and shortcut', () => {
+    draft.body =
+        'bug ' + 'a'.repeat(3972) + ' https://example.com/long-path-here';
+    let view = render();
+    assert.equal(
+        view.fields.find(
+            (element) => element.props['data-test'] === 'create-commit-button',
+        )!.props.disabled,
+        false,
+    );
+    const hint = view.fields.find(
+        (element) => element.type === IssueCommandHint,
+    )!;
+    vi.stubGlobal('requestAnimationFrame', vi.fn());
+    try {
+        (hint.props.onUse as (kind: string) => void)('bug');
+        view = render();
+        keyDown(view, 'Enter', { metaKey: true });
+        assert.equal(http.submit.mock.calls.length, 0);
+        assert.equal(
+            view.fields.find(
+                (element) => element.props['data-test'] === 'open-issue-button',
+            )!.props.disabled,
+            true,
+        );
+
+        draft.body = 'a'.repeat(3965) + ' https://example.com/long-path-here';
+        assert.equal(
+            render().fields.find(
+                (element) => element.props['data-test'] === 'open-issue-button',
+            )!.props.disabled,
+            false,
+        );
+    } finally {
+        vi.unstubAllGlobals();
+    }
+});
+
 test('commands are not offered while the draft has images, a poll or a schedule', () => {
     draft.images = [image];
     draft.body = '/';
@@ -679,6 +725,7 @@ test('turning scheduling off clears the chosen time and commits now', () => {
     assert.equal(label(submit()), 'Commit');
     assert.deepEqual(render().form.props.transform({ body: draft.body }), {
         body: draft.body,
+        commit_rules_accepted: true,
     });
 
     (find('aria-controls', 'body-schedule')!.props.onClick as () => void)();

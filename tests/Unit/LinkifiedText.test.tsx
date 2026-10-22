@@ -4,11 +4,77 @@ import { App } from '@inertiajs/react';
 import type { ComponentProps, ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { test } from 'vite-plus/test';
+import { BodyCounter } from '../../resources/js/components/body-counter';
+import { MessageText } from '../../resources/js/components/chat/message-parts';
 import { CommitBody } from '../../resources/js/components/commit-body';
 import {
     LinkifiedText,
     typedLinks,
 } from '../../resources/js/components/linkified-text';
+import { bodySegments } from '../../resources/js/lib/code';
+import { bodyCharacterCount } from '../../resources/js/lib/commit';
+
+test('counts each prose URL once per occurrence, without discounting code or oversized links', () => {
+    const cases: [string, number][] = [
+        ['é🚀 hello', 8],
+        ['example.com', 11],
+        ['https://example.com/long-path-here', 23],
+        ['éhttps://example.com/long-path-here', 35],
+        ['٤https://example.com/long-path-here', 35],
+        ['\u0301https://example.com/long-path-here', 35],
+        ['\u203fhttps://example.com/long-path-here', 35],
+        ['_https://example.com/long-path-here', 35],
+        ['🚀https://example.com/long-path-here', 24],
+        [
+            'https://example.com/long-path-here https://example.com/long-path-here',
+            47,
+        ],
+        ['(https://example.com/long-path-here).', 26],
+        ['https://example.com/a_(long_article).', 24],
+        ['example.com/long-path-here', 23],
+        ['`https://example.com/long-path-here`', 36],
+        ['```\nhttps://example.com/long-path-here\n```', 42],
+        ['`https://example.com/long-path-here', 24],
+        ['https://', 8],
+        ['https://...', 11],
+        ['javascript:alert(1)', 19],
+        ['https://example.com/' + 'x'.repeat(2028), 23],
+        ['https://example.com/' + 'x'.repeat(2029), 2049],
+        ['  hello\r\n\r\n\r\nhttps://example.com/long-path-here  ', 30],
+    ];
+    for (const [body, length] of cases) {
+        assert.equal(bodyCharacterCount(body), length, body);
+    }
+});
+
+test('trims the draft before recognizing fences so code keeps its blank lines', () => {
+    const body = '  ```\n' + 'a'.repeat(3990) + '\n'.repeat(6) + '```';
+
+    assert.equal(bodyCharacterCount(body), 4003);
+});
+
+test('does not discount a URL attached to a Unicode word character', () => {
+    const body = 'a'.repeat(3975) + ' éhttps://example.com/long-path-here';
+
+    assert.equal(bodyCharacterCount(body), 4011);
+    assert.deepEqual(typedLinks(body), []);
+});
+
+test('the counter discounts commit links but not issue links', () => {
+    const body = 'a'.repeat(3976) + ' https://example.com/long-path-here';
+    assert.match(
+        renderToStaticMarkup(<BodyCounter body={body} />),
+        /0 characters left/,
+    );
+    assert.match(
+        renderToStaticMarkup(<BodyCounter body={body} isIssue />),
+        /-11 characters left/,
+    );
+    assert.match(
+        renderToStaticMarkup(<BodyCounter body={body + ' x'} />),
+        /-2 characters left/,
+    );
+});
 
 function renderPage(content: ReactElement): string {
     return renderToStaticMarkup(
@@ -83,6 +149,74 @@ test('keeps captured mention identities in regular bodies alongside highlighted 
 });
 
 const url = 'https://www.example.com/a-long-path-to-the-release-notes';
+
+for (const surface of ['commit', 'remote', 'optimistic remote', 'excerpt']) {
+    test(`formats consecutive quote lines with inline content in a ${surface}`, () => {
+        const body =
+            '> First `code`\r\n> @original https://example.com :smile:\r\nNormal > text\n>Last';
+        const mentions = { original: '019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b' };
+        const segments = bodySegments(body);
+        const html = renderPage(
+            surface.includes('remote') ? (
+                <MessageText
+                    message={{
+                        body,
+                        mentions,
+                        body_segments:
+                            surface === 'remote' ? segments : undefined,
+                    }}
+                    isMine={surface === 'optimistic remote'}
+                />
+            ) : (
+                <CommitBody
+                    segments={segments}
+                    mentions={mentions}
+                    isStatic={surface === 'excerpt'}
+                />
+            ),
+        );
+
+        const quotes = [
+            ...html.matchAll(/<blockquote[^>]*>(.*?)<\/blockquote>/gs),
+        ];
+        assert.equal(quotes.length, 2);
+        assert.equal(
+            quotes[0][1].replace(/<[^>]+>/g, ''),
+            'First code\r\n@original https://example.com 😄',
+        );
+        assert.match(quotes[0][1], /<code[^>]*>code<\/code>/);
+        assert.equal(quotes[1][1], 'Last');
+        assert.match(html, /<\/blockquote>Normal &gt; text<blockquote/);
+        if (surface === 'excerpt') {
+            assert.ok(!html.includes('<a'));
+        } else {
+            assert.ok(
+                quotes[0][1].includes(`href="/mentions/${mentions.original}"`),
+            );
+            assert.ok(quotes[0][1].includes('href="https://example.com"'));
+        }
+    });
+}
+
+test('only treats prose at a line start as a quote and escapes quoted HTML', () => {
+    const html = renderPage(
+        <CommitBody
+            segments={bodySegments(
+                '`code`> literal\n```text\n> fenced\n```\n> <script>alert(1)</script>\n>\n> `> inline`\n\nAfter',
+            )}
+            mentions={null}
+        />,
+    );
+
+    assert.equal(html.match(/<blockquote/g)?.length, 1);
+    assert.match(html, /<\/code>&gt; literal/);
+    assert.match(html, /<pre[^>]*>&gt; fenced<\/pre>/);
+    assert.match(
+        html,
+        /&lt;script&gt;alert\(1\)&lt;\/script&gt;\n\n<code[^>]*>&gt; inline<\/code><\/blockquote>\nAfter/,
+    );
+    assert.ok(!html.includes('<script>'));
+});
 
 test('finds the full preview URL outside inline and fenced code', () => {
     const body = [
@@ -277,8 +411,8 @@ for (const [link, href] of [
         'HTTPS://GitHub.com/laravel/framework',
     ],
     [
-        'http://github.com/nunomaduro/dev-null.sh',
-        'http://github.com/nunomaduro/dev-null.sh',
+        'http://github.com/dev-null-sh/dev-null.sh',
+        'http://github.com/dev-null-sh/dev-null.sh',
     ],
 ]) {
     test(`shows GitHub repository links however they are written: ${link}`, () => {
