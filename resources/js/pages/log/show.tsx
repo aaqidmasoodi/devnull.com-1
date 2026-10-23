@@ -50,6 +50,7 @@ export default function Show({
     const commitDialogClosedCount = useCommitDialogClosedCount();
     const viewerId = user?.id ?? 'guest';
     const newestId = isRanked ? undefined : commits.data[0]?.id;
+    const oldestLoadedId = commits.data.at(-1)?.id;
     const tabsRef = useRef<HTMLDivElement>(null);
     const [tabsHeight, setTabsHeight] = useState(0);
     const feedRef = useRef<HTMLDivElement>(null);
@@ -328,6 +329,10 @@ export default function Show({
                         only: ['commits', 'newCommitsCount'],
                         reset: ['commits'],
                         data: { since: '' },
+                        // The new commits come with everything already loaded, so the reader keeps their row.
+                        headers: {
+                            'X-Log-Through': oldestLoadedId ?? '',
+                        },
                         preserveUrl: true,
                         onFinish: () => {
                             loadingNew.current = false;
@@ -344,7 +349,7 @@ export default function Show({
         return () => {
             clearTimeout(timer);
         };
-    }, [autoLoads, newCommitsCount, isFetching]);
+    }, [autoLoads, newCommitsCount, isFetching, oldestLoadedId]);
 
     return (
         <>
