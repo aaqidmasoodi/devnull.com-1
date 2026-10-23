@@ -42,11 +42,22 @@ export default function Show({
     const [announced, setAnnounced] = useState(0);
     const [loaded, setLoaded] = useState<'shown' | 'leaving' | null>(null);
     const [isAway, setIsAway] = useState(false);
+    const [stateLog, setStateLog] = useState(log);
     const [waiting, setWaiting] = useState(0);
     const loadedTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
     const seenFresh = useRef<() => void>(() => undefined);
+    const fetchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
     const loadingNew = useRef(false);
     const freshIds = useRef<Set<string>>(new Set());
+
+    // Another log has its own commits to announce, so nothing of the last one's pill carries over.
+    if (stateLog !== log) {
+        setStateLog(log);
+        setIsFetching(false);
+        setLoaded(null);
+        setWaiting(0);
+    }
+
     const commitDialogClosedCount = useCommitDialogClosedCount();
     const viewerId = user?.id ?? 'guest';
     const newestId = isRanked ? undefined : commits.data[0]?.id;
@@ -293,7 +304,13 @@ export default function Show({
         seenFresh.current = () => dismissLoaded(1500);
     });
 
-    useEffect(() => () => loadedTimers.current.forEach(clearTimeout), []);
+    useEffect(
+        () => () => {
+            loadedTimers.current.forEach(clearTimeout);
+            clearTimeout(fetchTimer.current);
+        },
+        [],
+    );
 
     useEffect(() => {
         const update = () => setIsAway(window.scrollY > 120);
@@ -323,7 +340,7 @@ export default function Show({
             loadingNew.current = true;
 
             // The pill says it is fetching for a beat, so it reads as a step even when the answer is quick.
-            setTimeout(
+            fetchTimer.current = setTimeout(
                 () =>
                     router.reload({
                         only: ['commits', 'newCommitsCount'],
